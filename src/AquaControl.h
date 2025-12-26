@@ -24,6 +24,7 @@ Copyright 2016
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>  // Over-The-Air updates
 #endif
 
 #if defined(USE_RTC_DS3231)

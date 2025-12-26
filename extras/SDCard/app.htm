@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aquarium Light Control</title>
+    <link rel="stylesheet" href="css/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <h1>🐠 Aquarium Lichtsteuerung</h1>
+            <div class="status">
+                <span class="status-item">🌡️ <span id="temp">--.-</span>°C</span>
+                <span class="status-item">🕐 <span id="time">--:--:--</span></span>
+                <span class="status-item" id="wifiStatus">📶 Verbunden</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Macro Active Banner -->
+        <div id="macroBanner" class="macro-banner hidden">
+            <div class="macro-info">
+                <span class="macro-name">🎬 <span id="macroName">Movie Mode</span></span>
+                <span class="macro-timer">⏱️ <span id="macroRemaining">--:--</span> verbleibend</span>
+            </div>
+            <button onclick="stopMacro()" class="btn-stop">■ Stoppen</button>
+        </div>
+
+        <!-- Test Mode Banner -->
+        <div id="testBanner" class="test-banner hidden">
+            <span>⚡ Test-Modus aktiv - Schieberegler steuern die Lichter direkt</span>
+            <button onclick="exitTestMode()" class="btn-stop">Beenden</button>
+        </div>
+
+        <!-- Schedule Chart -->
+        <section class="card">
+            <div class="card-header">
+                <h2>📊 Tagesablauf</h2>
+                <div class="card-actions">
+                    <button onclick="toggleTestMode()" class="btn btn-primary" id="testModeBtn">
+                        ⚡ Test-Modus starten
+                    </button>
+                    <button onclick="saveSchedule()" class="btn btn-success">
+                        💾 Zeitplan speichern
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="scheduleChart"></canvas>
+            </div>
+            <div class="chart-legend" id="chartLegend"></div>
+        </section>
+
+        <!-- Channel Controls -->
+        <section class="card">
+            <div class="card-header">
+                <h2>🎚️ Kanal-Steuerung</h2>
+                <div class="card-actions">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="linkChannels">
+                        <span>Alle Kanäle verknüpfen</span>
+                    </label>
+                </div>
+            </div>
+            <div id="channelControls" class="channel-controls"></div>
+        </section>
+
+        <!-- Add Target Point -->
+        <section class="card">
+            <div class="card-header">
+                <h2>➕ Zeitpunkt hinzufügen</h2>
+            </div>
+            <div class="add-target">
+                <div class="form-group">
+                    <label>Zeit:</label>
+                    <input type="time" id="newTargetTime" value="12:00">
+                </div>
+                <button onclick="addTargetAtTime()" class="btn btn-primary">
+                    Aktuelle Werte zu dieser Zeit speichern
+                </button>
+            </div>
+        </section>
+
+        <!-- Macros -->
+        <section class="card">
+            <div class="card-header">
+                <h2>⚡ Makros</h2>
+                <button onclick="showMacroWizard()" class="btn btn-primary">
+                    ➕ Neues Makro erstellen
+                </button>
+            </div>
+            <div id="macroList" class="macro-list">
+                <p class="loading">Lade Makros...</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Macro Wizard Modal -->
+    <div id="macroWizard" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔧 Makro-Assistent</h2>
+                <button onclick="closeMacroWizard()" class="btn-close">×</button>
+            </div>
+
+            <!-- Step 1: Name and Duration -->
+            <div id="wizardStep1" class="wizard-step">
+                <h3>Schritt 1: Name und Dauer</h3>
+                <div class="form-group">
+                    <label>Makro-Name:</label>
+                    <input type="text" id="wizardMacroNameInput" placeholder="z.B. Film-Modus">
+                </div>
+                <div class="form-group">
+                    <label>Dauer:</label>
+                    <div class="duration-inputs">
+                        <input type="number" id="macroDurationHours" min="0" max="12" value="2">
+                        <span>Stunden</span>
+                        <input type="number" id="macroDurationMinutes" min="0" max="59" value="0">
+                        <span>Minuten</span>
+                    </div>
+                </div>
+                <button onclick="wizardNext()" class="btn btn-primary">Weiter →</button>
+            </div>
+
+            <!-- Step 2: Edit Schedule -->
+            <div id="wizardStep2" class="wizard-step hidden">
+                <h3>Schritt 2: Lichtmuster definieren</h3>
+                <p class="help-text">
+                    Verwenden Sie die Schieberegler, um das Lichtmuster für dieses Makro festzulegen.
+                </p>
+                <div class="chart-container">
+                    <canvas id="macroChart"></canvas>
+                </div>
+                <div id="macroChannelControls" class="channel-controls"></div>
+                <div class="add-target">
+                    <div class="form-group">
+                        <label>Zeit (MM:SS):</label>
+                        <input type="text" id="macroAddTime" value="05:00" placeholder="MM:SS">
+                    </div>
+                    <button onclick="addMacroTimestamp()" class="btn btn-primary">
+                        Aktuelle Werte zu dieser Zeit speichern
+                    </button>
+                </div>
+                <div class="wizard-actions">
+                    <button onclick="wizardBack()" class="btn">← Zurück</button>
+                    <button onclick="saveMacro()" class="btn btn-success">💾 Makro speichern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/chart-manager.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>

@@ -6,8 +6,8 @@
 #define USE_PCA9685
 
 /* Define here what type of time keeper you want to use. */
-#define USE_RTC_DS3231		// Synchronizes the time with a DS3231 RTC module. The standard i2c pins will be used
-//#define USE_NTP			  // Not yet implemented - Connects to an NTP Server to get synchronize the time. This is only available if ESP8266 or EthernetShield is installed
+#define USE_RTC_DS3231 // Synchronizes the time with a DS3231 RTC module. The standard i2c pins will be used
+// #define USE_NTP			  // Not yet implemented - Connects to an NTP Server to get synchronize the time. This is only available if ESP8266 or EthernetShield is installed
 
 /* Comment this out to not use the web interface functionality */
 #define USE_WEBSERVER
@@ -15,7 +15,14 @@
 /* Comment this out, if you do not have a DS18B20 temerature sensor */
 #define USE_DS18B20_TEMP_SENSOR
 
-/* Defines the maximum amount of target (time/value) blocks per channel */
-#define MAX_TARGET_COUNT_PER_CHANNEL 10
+/* Defines the maximum amount of target (time/value) blocks per channel.
+   Increase for ESP8266 where RAM allows denser sampling. Keep conservative on AVR. */
+#if defined(ESP8266)
+#define MAX_TARGET_COUNT_PER_CHANNEL 128
+#elif defined(__AVR__)
+#define MAX_TARGET_COUNT_PER_CHANNEL 16
+#else
+#define MAX_TARGET_COUNT_PER_CHANNEL 64
+#endif
 
 #endif
