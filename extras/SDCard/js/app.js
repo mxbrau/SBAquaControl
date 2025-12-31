@@ -566,10 +566,10 @@ function wizardNext() {
     document.getElementById('wizardStep1').classList.add('hidden');
     document.getElementById('wizardStep2').classList.remove('hidden');
 
-    // Initialize macro chart
+    // Initialize macro chart with custom duration
     if (!macroChart) {
         createChannelControls('macroChannelControls', true);
-        macroChart = new ChartManager('macroChart', true);
+        macroChart = new ChartManager('macroChart', true, duration);  // Pass duration as max seconds
         macroChart.init();
 
         // Initialize with simple start/end pattern
@@ -697,15 +697,16 @@ async function editMacro(macroId) {
         wizardMode = 'edit';
         wizardMacroName = data.name || macroId;
         wizardMacroId = macroId;
+        wizardDurationSeconds = data.duration;  // Store duration for chart
 
         // Go directly to step 2
         document.getElementById('macroWizard').classList.remove('hidden');
         document.getElementById('wizardStep1').classList.add('hidden');
         document.getElementById('wizardStep2').classList.remove('hidden');
 
-        // Initialize chart with existing data
+        // Initialize chart with existing data and custom duration
         createChannelControls('macroChannelControls', true);
-        macroChart = new ChartManager('macroChart', true);
+        macroChart = new ChartManager('macroChart', true, data.duration);  // Pass duration
         macroChart.init();
 
         // Load existing schedule

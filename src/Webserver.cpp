@@ -675,8 +675,31 @@ void handleApiMacroList()
 
 	_Server.sendContent("{\"macros\":[");
 
-	// Note: ESP8266 SD library doesn't have efficient directory listing
-	// For now, we'll return empty list. In production, implement with SPIFFS or enumerate known macros
+	// Enumerate macro files: check for pattern macros/macro_NNN_ch00.cfg
+	// This identifies all macros by checking the first channel file
+	bool firstMacro = true;
+	for (uint16_t macroNum = 1; macroNum <= 999; macroNum++)
+	{
+		char sTempFilename[50];
+		String sMacroPath = "macros/macro_";
+		sMacroPath += (macroNum <= 9 ? "00" : (macroNum <= 99 ? "0" : ""));
+		sMacroPath += String(macroNum);
+		sMacroPath += "_ch00.cfg";
+		sMacroPath.toCharArray(sTempFilename, 50);
+
+		if (SD.exists(sTempFilename))
+		{
+			if (!firstMacro)
+				_Server.sendContent(",");
+			firstMacro = false;
+
+			// Build macro ID (e.g., "macro_001")
+			char idBuf[64];
+			String macroIdStr = sMacroPath.substring(7, sMacroPath.indexOf("_ch"));
+			sprintf(idBuf, "{\"id\":\"%s\",\"name\":\"%s\"}", macroIdStr.c_str(), macroIdStr.c_str());
+			_Server.sendContent(idBuf);
+		}
+	}
 
 	_Server.sendContent("]}");
 }
@@ -777,7 +800,7 @@ void handleApiMacroSave()
 {
 	String body = _Server.arg("plain");
 
-	// Parse macro id
+	// Parse macro id (user-provided name)
 	int idIdx = body.indexOf("\"id\":");
 	if (idIdx == -1)
 	{
@@ -789,16 +812,44 @@ void handleApiMacroSave()
 	int idEnd = body.indexOf(',', idStart);
 	if (idEnd == -1)
 		idEnd = body.indexOf('}', idStart);
-	String macroId = body.substring(idStart, idEnd);
-	macroId.trim();
-	if (macroId.startsWith("\""))
-		macroId = macroId.substring(1, macroId.length() - 1);
+	String userMacroId = body.substring(idStart, idEnd);
+	userMacroId.trim();
+	if (userMacroId.startsWith("\""))
+		userMacroId = userMacroId.substring(1, userMacroId.length() - 1);
 
-	if (macroId.length() == 0)
+	if (userMacroId.length() == 0)
 	{
 		_Server.send(400, "application/json", "{\"error\":\"Invalid id\"}");
 		return;
 	}
+
+	// Generate normalized macro ID: find next available macro_NNN
+	uint16_t macroNum = 1;
+	String normalizedMacroId;
+	char sTempFilename[50];
+
+	// Find first available macro number
+	while (macroNum <= 999)
+	{
+		normalizedMacroId = "macro_";
+		normalizedMacroId += (macroNum <= 9 ? "00" : (macroNum <= 99 ? "0" : ""));
+		normalizedMacroId += String(macroNum);
+
+		String checkPath = "macros/";
+		checkPath += normalizedMacroId;
+		checkPath += "_ch00.cfg";
+		checkPath.toCharArray(sTempFilename, 50);
+
+		// If this macro already exists, use it (edit mode); otherwise keep looking for next available
+		if (!SD.exists(sTempFilename))
+		{
+			break; // Found an available slot
+		}
+		macroNum++;
+	}
+
+	// Use normalized ID for file storage
+	String macroId = normalizedMacroId;
 
 	// Parse channels array
 	int channelsIdx = body.indexOf("\"channels\":[");
@@ -886,12 +937,54 @@ void handleApiMacroSave()
 			}
 
 			// Write macro file for this channel
-			if (tempChannel.TargetCount > 0)
 			{
-				String macroPath = "macros/";
-				macroPath += macroId;
-				macroPath += "_ch";
-				_aqc->writeTargetsToFile(macroPath, channel, tempChannel);
+				// Format macro path without String concatenation to avoid heap fragmentation
+				char sTempMacroPath[50];
+				sprintf(sTempMacroPath, "macros/%s_ch%02d.cfg", macroId.c_str(), channel);
+
+				// Delete old file if it exists
+				if (SD.exists(sTempMacroPath))
+				{
+					if (!SD.remove(sTempMacroPath))
+					{
+						Serial.print(F("Error: Couldn't remove old macro file "));
+						Serial.println(sTempMacroPath);
+						continue;
+					}
+				}
+
+				// Create new file
+				File configFile = SD.open(sTempMacroPath, FILE_WRITE);
+				if (!configFile)
+				{
+					Serial.print(F("Error: Couldn't create macro file "));
+					Serial.println(sTempMacroPath);
+					continue;
+				}
+
+				// Write all targets to file (same format as schedules)
+				for (uint8_t t = 0; t < tempChannel.TargetCount; t++)
+				{
+					Target tTarget = tempChannel.Targets[t];
+
+					// Format time as MM:SS for macro (duration-based, not 24h)
+					uint8_t iMin = tTarget.Time / 60;
+					uint8_t iSec = tTarget.Time % 60;
+
+					char timeBuf[8];
+					sprintf(timeBuf, "%02d:%02d", iMin, iSec);
+					configFile.print(timeBuf);
+
+					configFile.write(';');
+					char valueBuf[4];
+					sprintf(valueBuf, "%u", (unsigned int)tTarget.Value);
+					configFile.print(valueBuf);
+
+					configFile.write(13);
+					configFile.write(10);
+				}
+
+				configFile.close();
 			}
 		}
 

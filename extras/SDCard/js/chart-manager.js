@@ -4,10 +4,11 @@
 // The firmware does: pwmValue = lastTarget.value + (nextTarget.value - lastTarget.value) * progress
 // This UI replicates that exact behavior.
 class ChartManager {
-    constructor(canvasId, isTimeRange = false) {
+    constructor(canvasId, isTimeRange = false, maxSeconds = null) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.isTimeRange = isTimeRange;
+        this.maxSeconds = maxSeconds;  // For macros: custom duration; for schedule: default 86400
         this.chart = null;
         this.controlSchedules = Array(6).fill(null).map(() => []); // control points (user-defined only)
         this.sampledSchedules = Array(6).fill(null).map(() => []);  // LINEAR samples between control points (NO smoothing)
@@ -65,7 +66,7 @@ class ChartManager {
                     x: {
                         type: 'linear',
                         min: 0,
-                        max: this.isTimeRange ? 7200 : 86400,  // 2 hours or 24 hours
+                        max: this.maxSeconds !== null ? this.maxSeconds : (this.isTimeRange ? 7200 : 86400),
                         ticks: {
                             callback: (value) => this.formatTime(value)
                         },
