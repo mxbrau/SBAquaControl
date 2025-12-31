@@ -43,6 +43,12 @@ const API = {
         });
     },
 
+    async clearAllSchedules() {
+        return this.call(CONFIG.api.scheduleClear, {
+            method: 'POST'
+        });
+    },
+
     async addTarget(channel, time, value) {
         return this.call(CONFIG.api.targetAdd, {
             method: 'POST',

@@ -13,12 +13,12 @@
 #define USE_WEBSERVER
 
 /* Comment this out, if you do not have a DS18B20 temerature sensor */
-#define USE_DS18B20_TEMP_SENSOR
+// #define USE_DS18B20_TEMP_SENSOR
 
 /* Defines the maximum amount of target (time/value) blocks per channel.
    Increase for ESP8266 where RAM allows denser sampling. Keep conservative on AVR. */
 #if defined(ESP8266)
-#define MAX_TARGET_COUNT_PER_CHANNEL 128
+#define MAX_TARGET_COUNT_PER_CHANNEL 32
 #elif defined(__AVR__)
 #define MAX_TARGET_COUNT_PER_CHANNEL 16
 #else

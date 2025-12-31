@@ -1,14 +1,18 @@
 // Chart.js Manager
+// NOTE: This manager uses LINEAR interpolation only (no spline smoothing)
+// to match the firmware's simple linear PWM interpolation algorithm.
+// The firmware does: pwmValue = lastTarget.value + (nextTarget.value - lastTarget.value) * progress
+// This UI replicates that exact behavior.
 class ChartManager {
     constructor(canvasId, isTimeRange = false) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.isTimeRange = isTimeRange;
         this.chart = null;
-        this.controlSchedules = Array(6).fill(null).map(() => []); // control points (user-defined + wrap)
-        this.sampledSchedules = Array(6).fill(null).map(() => []);  // densified samples following the PWM
-        this.samplesPerSegmentDefault = 64; // higher density for smoother curve
-        this.maxTargetsPerChannel = 128;    // align with firmware cap
+        this.controlSchedules = Array(6).fill(null).map(() => []); // control points (user-defined only)
+        this.sampledSchedules = Array(6).fill(null).map(() => []);  // LINEAR samples between control points (NO smoothing)
+        this.samplesPerSegmentDefault = 2; // LINEAR only: just start and end point per segment
+        this.maxTargetsPerChannel = 32;    // align with new firmware cap (was 128, reduced for ESP8266 RAM)
     }
 
     // Initialize the chart
@@ -288,83 +292,21 @@ class ChartManager {
         }
     }
 
-    // Generate monotone cubic samples along the control points, returning dense points with flags
+    // Generate LINEAR samples along the control points, with NO spline smoothing
+    // This matches the firmware's simple linear interpolation: y = y0 + (y1 - y0) * progress
+    // samplesPerSegment ignored for linear mode (always 2: start + end per segment)
     generateMonotoneSamples(points, samplesPerSegment) {
         if (!points || points.length === 0) return [];
         if (points.length === 1) return [{ ...points[0], isControl: true }];
 
-        // Decide actual samples per segment to stay within maxTargetsPerChannel budget
-        const segments = Math.max(1, points.length - 1);
-        const targetPerSegCap = Math.max(1, Math.floor((this.maxTargetsPerChannel - 1) / segments));
-        const perSeg = Math.min(samplesPerSegment || this.samplesPerSegmentDefault, targetPerSegCap);
-
-        // Precompute slopes and tangents (monotone cubic Hermite)
-        const n = points.length;
-        const d = new Array(n - 1);
-        const m = new Array(n);
-
-        for (let i = 0; i < n - 1; i++) {
-            const dx = points[i + 1].x - points[i].x;
-            const dy = points[i + 1].y - points[i].y;
-            d[i] = dy / dx;
-        }
-
-        m[0] = d[0];
-        m[n - 1] = d[n - 2];
-        for (let i = 1; i < n - 1; i++) {
-            if (d[i - 1] * d[i] <= 0) {
-                m[i] = 0;
-            } else {
-                m[i] = (d[i - 1] + d[i]) / 2;
-            }
-        }
-
-        // Adjust tangents to preserve monotonicity
-        for (let i = 0; i < n - 1; i++) {
-            if (d[i] === 0) {
-                m[i] = 0;
-                m[i + 1] = 0;
-            } else {
-                const a = m[i] / d[i];
-                const b = m[i + 1] / d[i];
-                const h = Math.hypot(a, b);
-                if (h > 3) {
-                    const t = 3 / h;
-                    m[i] = t * a * d[i];
-                    m[i + 1] = t * b * d[i];
-                }
-            }
-        }
-
-        const samples = [];
-        for (let i = 0; i < n - 1; i++) {
-            const p0 = points[i];
-            const p1 = points[i + 1];
-            const dx = p1.x - p0.x;
-            const dy = p1.y - p0.y;
-
-            // push the start point of the segment
-            samples.push({ ...p0 });
-
-            for (let s = 1; s <= perSeg; s++) {
-                const t = s / perSeg;
-                const h00 = (2 * t ** 3) - (3 * t ** 2) + 1;
-                const h10 = t ** 3 - (2 * t ** 2) + t;
-                const h01 = (-2 * t ** 3) + (3 * t ** 2);
-                const h11 = t ** 3 - t ** 2;
-
-                const y = h00 * p0.y + h10 * dx * m[i] + h01 * p1.y + h11 * dx * m[i + 1];
-                const x = p0.x + t * dx;
-
-                // skip the exact end point; it will be added as start of next segment
-                if (s < perSeg) {
-                    samples.push({ x, y, isControl: false });
-                }
-            }
-        }
-
-        // push final control point
-        samples.push({ ...points[n - 1] });
+        // For linear interpolation, we only need control points
+        // Chart.js will draw straight lines between them
+        // Mark all as control points so they show up as markers in the chart
+        const samples = points.map(p => ({
+            x: p.x,
+            y: p.y,
+            isControl: p.isControl !== false  // preserve isControl flag
+        }));
 
         return samples;
     }

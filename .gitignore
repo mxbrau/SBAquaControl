@@ -12,3 +12,5 @@
 /examples/AquaControlSketch/__vm
 /examples/AquaControlSketch/Debug
 /.pio/
+/.vscode/
+/.venv/

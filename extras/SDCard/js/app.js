@@ -382,6 +382,32 @@ async function saveSchedule() {
     }
 }
 
+// Delete all schedules
+async function deleteAllSchedules() {
+    if (!confirm('Wirklich alle Zeitpläne löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+        console.log('Delete operation cancelled by user');
+        return;
+    }
+
+    try {
+        await API.clearAllSchedules();
+
+        // Clear the chart state
+        for (let channel = 0; channel < 6; channel++) {
+            state.schedules[channel] = [];
+        }
+
+        // Refresh the chart to show empty state
+        await loadSchedules();
+
+        alert('✅ Alle Zeitpläne wurden gelöscht!');
+        console.log('✅ All schedules deleted');
+    } catch (error) {
+        console.error('❌ Schedule delete failed:', error);
+        alert('Fehler beim Löschen: ' + error.message);
+    }
+}
+
 // Build sanitized, capped target list from sampled chart data
 function buildSampledTargetsForChannel(channel) {
     const MAX_TARGETS = 128; // align with ESP8266 firmware cap

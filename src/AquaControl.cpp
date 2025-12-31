@@ -10,6 +10,12 @@ Copyright 2016
 */
 
 #include "AquaControl.h"
+
+#if defined(USE_RTC_DS3231)
+DS3232RTC RTC;
+time_t getRTCTime() { return RTC.get(); }
+#endif
+
 #if defined(USE_NTP)
 #include <WiFiUdp.h>
 unsigned int localPort = 2390;		// local port to listen for UDP packets
@@ -321,24 +327,27 @@ bool AquaControl::readWlanConfig()
 	{
 		// if the file didn't open, print an error:
 		Serial.println("error opening wlan.cfg");
+		return false;
 	}
 }
 #endif
 
 bool AquaControl::readLedConfig()
 {
-	// Iterate through the pwm channels
-	for (uint8_t i = 0; i < PWM_CHANNELS; i++)
+	// Iterate through the pwm channels visible in the UI (6 channels)
+	// The system supports more channels (up to 16 on PCA9685), but the UI only manages these 6
+	uint8_t channelsToLoad = (PWM_CHANNELS > 6) ? 6 : PWM_CHANNELS;
+	for (uint8_t i = 0; i < channelsToLoad; i++)
 	{
 		char sTempName[30]; // This is used because the string objects causing freezes when using in SD.exists or SD.open commands
 		String sPwmFilename = "config/ledch_";
 		sPwmFilename += (i <= 9 ? "0" : "") + String(i);
 		sPwmFilename += ".cfg";
-		// Delete the old config file for the channel
+		// Check if config file exists for this channel
 		sPwmFilename.toCharArray(sTempName, 30);
 		if (!SD.exists(sTempName))
 		{
-			Serial.println(String(F("Warning: Couldn't find config file for LED channel ")) + String(i + 1));
+			// Config file doesn't exist - this is normal for first boot or unconfigured channels
 			continue;
 		}
 		else
@@ -346,7 +355,8 @@ bool AquaControl::readLedConfig()
 			File pwmFile = SD.open(sTempName);
 			if (!pwmFile)
 			{
-				Serial.println(String(F("Error: Couln't open config file for LED channel ")) + String(i + 1));
+				Serial.print(F("Error: Couldn't open config file for LED channel "));
+				Serial.println(i + 1);
 				continue;
 			}
 			else
@@ -410,50 +420,71 @@ bool AquaControl::readLedConfig()
 			}
 		}
 	}
+	return true;
 }
 
-bool AquaControl::writeLedConfig(uint8_t pwmChannel)
+// Helper: Write targets to file with given path format
+// pathPrefix: e.g. "config/ledch_" or "macros/macro_" (function appends channel number and .cfg)
+bool AquaControl::writeTargetsToFile(const String &pathPrefix, uint8_t channel, PwmChannel &pwmChannel)
 {
-	char sTempFilename[30]; // This for SD.exists and SD.open because the SD library freezes when using String objects
-	String sPwmFilename = "config/ledch_";
-	sPwmFilename += pwmChannel <= 9 ? (String("0") + String(pwmChannel)) : String(pwmChannel);
-	sPwmFilename += ".cfg";
-	sPwmFilename.toCharArray(sTempFilename, 30);
-	// Delete the old config file for the channel
+	char sTempFilename[30];
+	String sFilename = pathPrefix;
+	sFilename += (channel <= 9 ? (String("0") + String(channel)) : String(channel));
+	sFilename += ".cfg";
+	sFilename.toCharArray(sTempFilename, 30);
+
+	// Delete the old file
 	if (SD.exists(sTempFilename))
 	{
 		if (!SD.remove(sTempFilename))
 		{
-			Serial.println(String(F("Error: Couldn't remove old config file ")) + sPwmFilename);
+			Serial.print(F("Error: Couldn't remove old file "));
+			Serial.println(sFilename);
 			return false;
 		}
 	}
-	// Create the new config file
-	File pwmFile = SD.open(sTempFilename, FILE_WRITE);
-	if (!pwmFile)
+
+	// Create the new file
+	File configFile = SD.open(sTempFilename, FILE_WRITE);
+	if (!configFile)
 	{
-		Serial.println(String(F("Error: Couldn't create config file ")) + sPwmFilename);
+		Serial.print(F("Error: Couldn't create file "));
+		Serial.println(sFilename);
 		return false;
 	}
-	// Iterate trough the targets and write them to the file
-	// the format is Time;Vlaue (e.g. 08:30;100)
-	for (uint8_t t = 0; t < _PwmChannels[pwmChannel].TargetCount; t++)
+
+	// Write all targets to file
+	// Format: HH:MM;VALUE (e.g. 08:30;100)
+	for (uint8_t t = 0; t < pwmChannel.TargetCount; t++)
 	{
-		Target tTarget = _PwmChannels[pwmChannel].Targets[t];
-		// Write the time in hh:mm format
-		String sHour, sMinute;
+		Target tTarget = pwmChannel.Targets[t];
+
+		// Format time as HH:MM
 		uint8_t iHour = hour(tTarget.Time);
 		uint8_t iMinute = minute(tTarget.Time);
-		pwmFile.write((String((iHour > 9 ? "" : "0")) + String(iHour) + ":" + String((iMinute > 9 ? "" : "0")) + String(iMinute)).c_str());
-		pwmFile.write(';');
-		// Write the value
-		pwmFile.write(String(tTarget.Value).c_str());
-		// Write a new line
-		pwmFile.write(13);
-		pwmFile.write(10);
+
+		char timeBuf[8];
+		sprintf(timeBuf, "%02d:%02d", iHour, iMinute);
+		configFile.print(timeBuf);
+
+		// Write separator and value
+		configFile.write(';');
+		char valueBuf[4];
+		sprintf(valueBuf, "%u", (unsigned int)tTarget.Value);
+		configFile.print(valueBuf);
+
+		// Write line ending
+		configFile.write(13);
+		configFile.write(10);
 	}
-	pwmFile.close();
+
+	configFile.close();
 	return true;
+}
+
+bool AquaControl::writeLedConfig(uint8_t pwmChannel)
+{
+	return writeTargetsToFile("config/ledch_", pwmChannel, _PwmChannels[pwmChannel]);
 }
 
 void AquaControl::initTimeKeeper()
@@ -464,7 +495,8 @@ void AquaControl::initTimeKeeper()
 	do
 	{
 		Serial.print(".");
-		setSyncProvider(RTC.get); // the function to get the time from the RTC
+		RTC.begin();
+		setSyncProvider(getRTCTime); // the function to get the time from the RTC
 		if (timeStatus() != timeSet)
 		{
 			delay(500);
@@ -587,7 +619,7 @@ void AquaControl::init()
 	// Init the time mechanism (RTC or NTP)
 	initTimeKeeper();
 	CurrentSecOfDay = elapsedSecsToday(now());
-	CurrentMilli = nowMs();
+	CurrentMilli = millis() % 1000;
 
 	// Init the pwm channels
 	Serial.print(F("Initializing PWM channels..."));
@@ -599,17 +631,30 @@ void AquaControl::init()
 
 #if defined(USE_WEBSERVER)
 	Serial.print(F("Initializing Webserver..."));
-	_Server = ESP8266WebServer(80);
+	_Server.begin();
+
+	// Main entry point
 	_Server.on("/", handleRoot);
-	_Server.on("/editled", HTTP_GET, handleEditLedGET);
-	_Server.on("/editled", HTTP_POST, handleEditLedPOST);
-	_Server.on("/editwlan", HTTP_GET, handleEditWlanGET);
-	_Server.on("/editwlan", HTTP_POST, handleEditWlanPOST);
-	_Server.on("/edittime", HTTP_GET, handleTimeGET);
-	_Server.on("/edittime", HTTP_POST, handleTimePOST);
-	_Server.on("/test", HTTP_GET, handleTestModeGET);
-	_Server.on("/test", HTTP_POST, handleTestModePOST);
-	_Server.on("/css/style.css", HTTP_GET, handleStyleGET);
+
+	// JSON API endpoints
+	_Server.on("/api/status", HTTP_GET, handleApiStatus);
+	_Server.on("/api/schedule/get", HTTP_GET, handleApiScheduleGet);
+	_Server.on("/api/schedule/all", HTTP_GET, handleApiScheduleAll);
+	_Server.on("/api/schedule/save", HTTP_POST, handleApiScheduleSave);
+	_Server.on("/api/schedule/clear", HTTP_POST, handleApiScheduleClear);
+	_Server.on("/api/schedule/target/add", HTTP_POST, handleApiTargetAdd);
+	_Server.on("/api/schedule/target/delete", HTTP_POST, handleApiTargetDelete);
+	_Server.on("/api/test/start", HTTP_POST, handleApiTestStart);
+	_Server.on("/api/test/update", HTTP_POST, handleApiTestUpdate);
+	_Server.on("/api/test/exit", HTTP_POST, handleApiTestExit);
+	_Server.on("/api/macro/list", HTTP_GET, handleApiMacroList);
+	_Server.on("/api/macro/get", HTTP_GET, handleApiMacroGet);
+	_Server.on("/api/macro/save", HTTP_POST, handleApiMacroSave);
+	_Server.on("/api/macro/activate", HTTP_POST, handleApiMacroActivate);
+	_Server.on("/api/macro/stop", HTTP_POST, handleApiMacroStop);
+	_Server.on("/api/macro/delete", HTTP_POST, handleApiMacroDelete);
+	_Server.on("/api/reboot", HTTP_POST, handleApiReboot);
+	_Server.on("/api/debug", HTTP_GET, handleApiDebug);
 
 	_Server.onNotFound(handleNotFound);
 	_Server.begin();
@@ -659,6 +704,7 @@ bool AquaControl::addChannelTarget(uint8_t channel, Target target)
 		Serial.print(pos);
 		Serial.print(F(" of channel "));
 		Serial.println(channel);
+		return true;
 	}
 }
 
@@ -666,14 +712,15 @@ void AquaControl::proceedCycle()
 {
 	uint8_t cycle = 0;
 	CurrentSecOfDay = elapsedSecsToday(now());
-	CurrentMilli = nowMs();
+	CurrentMilli = millis() % 1000;
 
 #if defined(ESP8266)
 	// Handle OTA updates
 	ArduinoOTA.handle();
+	yield(); // Prevent watchdog reset
 #endif
 
-	for (cycle; cycle < PWM_CHANNELS; cycle++)
+	for (cycle = 0; cycle < PWM_CHANNELS; cycle++)
 	{
 		_PwmChannels[cycle].proceedCycle(CurrentSecOfDay, CurrentMilli);
 		if (_PwmChannels[cycle].HasToWritePwm || _IsFirstCycle)
@@ -686,12 +733,13 @@ void AquaControl::proceedCycle()
 #if defined(USE_WEBSERVER)
 	// Hande the Webserver features
 	_Server.handleClient();
+	yield(); // Prevent watchdog reset
 #endif
 
 #if defined(USE_DS18B20_TEMP_SENSOR)
 	if (_Temperature.Status)
 	{
-		_Temperature.readTemperature(_PwmChannels->CurrentSecOfDay);
+		_Temperature.readTemperature(CurrentSecOfDay);
 	}
 	else
 	{
@@ -704,7 +752,7 @@ bool TemperatureReader::readTemperature(time_t currentSeconds)
 {
 	// Check, if we can do any activity
 	if (currentSeconds >= _NextPossibleActivity || currentSeconds < (_NextPossibleActivity - 120))
-	{	// The second test is for the case of day change
+	{ // The second test is for the case of day change
 		// Is it a new reading or the second stage of reading?
 		if (!_TickTock)
 		{
@@ -801,21 +849,21 @@ void AquaControl::writePwmToDevice(uint8_t channel)
 }
 
 #if defined(ESP8266)
-IPAddress AquaControl::extractIPAddress(String sIP)
+IPAddress AquaControl::extractIPAddress(const String &sIP)
 {
-	// Serial.println(sIP);
+	// Create local mutable copy to avoid const-correctness violation
+	String temp = sIP;
 	uint32_t ip = 0;
 	int8_t iIndex = 0;
-	while ((iIndex = sIP.lastIndexOf(".")) != -1)
+	while ((iIndex = temp.lastIndexOf(".")) != -1)
 	{
-		uint8_t singleVal = sIP.substring(iIndex + 1).toInt();
+		uint8_t singleVal = temp.substring(iIndex + 1).toInt();
 		ip |= singleVal;
 		ip = ip << 8;
-		// Serial.println(ip, BIN);
-		//  remove the leading dot
-		sIP = sIP.substring(0, iIndex);
+		// Remove the leading dot by truncating string
+		temp = temp.substring(0, iIndex);
 	}
-	ip |= sIP.substring(0).toInt();
+	ip |= temp.substring(0).toInt();
 	return IPAddress(ip);
 }
 #endif

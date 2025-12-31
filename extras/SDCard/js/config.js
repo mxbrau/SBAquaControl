@@ -31,6 +31,7 @@ const CONFIG = {
         scheduleGet: '/api/schedule/get',
         scheduleAll: '/api/schedule/all',
         scheduleSave: '/api/schedule/save',
+        scheduleClear: '/api/schedule/clear',
         targetAdd: '/api/schedule/target/add',
         targetDelete: '/api/schedule/target/delete',
         testStart: '/api/test/start',

@@ -15,7 +15,7 @@ Copyright 2016
 #include "AquaControl_config.h"
 
 #define AQC_VERSION "0.5"
-#define AQC_BUILD	"0.5.001"
+#define AQC_BUILD "0.5.001"
 
 #include <Arduino.h>
 
@@ -24,7 +24,7 @@ Copyright 2016
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-#include <ArduinoOTA.h>  // Over-The-Air updates
+#include <ArduinoOTA.h> // Over-The-Air updates
 #endif
 
 #if defined(USE_RTC_DS3231)
@@ -34,7 +34,7 @@ Copyright 2016
 
 #if defined(USE_DS18B20_TEMP_SENSOR)
 #include <OneWire.h>
-#define DS18B20_PIN	D4 // Defines the pin, where the data wire of the DS18B20 sensor is connected
+#define DS18B20_PIN D4 // Defines the pin, where the data wire of the DS18B20 sensor is connected
 #endif
 
 #if defined(USE_PCA9685)
@@ -46,25 +46,35 @@ Copyright 2016
 #include <SPI.h>
 #include <SD.h>
 
-
 #include <TimeLib.h>
 
 #if defined(USE_WEBSERVER)
-// Handles for the Webserer
+// Webserver handlers
 void handleRoot();
-void handleEditWlanGET();
-void handleEditWlanPOST();
-void handleEditLedPOST();
-void handleEditLedGET();
 void handleNotFound();
-void handleTestModeGET();
-void handleTestModePOST();
-void handleTimeGET();
-void handleTimePOST();
-void handleStyleGET();
+
+// JSON API handlers
+void handleApiStatus();
+void handleApiScheduleGet();
+void handleApiScheduleAll();
+void handleApiScheduleSave();
+void handleApiScheduleClear();
+void handleApiTargetAdd();
+void handleApiTargetDelete();
+void handleApiTestStart();
+void handleApiTestUpdate();
+void handleApiTestExit();
+void handleApiMacroList();
+void handleApiMacroGet();
+void handleApiMacroSave();
+void handleApiMacroActivate();
+void handleApiMacroStop();
+void handleApiMacroDelete();
+void handleApiReboot();
+void handleApiDebug();
 #endif
 
-#if defined (__AVR__)
+#if defined(__AVR__)
 #define SD_CS 0
 #elif defined(ESP8266)
 #define SD_CS D8
@@ -73,115 +83,121 @@ void handleStyleGET();
 #endif
 
 #if defined(USE_PCA9685)
-	#define PWM_STEP 5
-	#define PWM_MAX 4095 // 12 bit PCA9685 Board
-	/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
-	#define PWM_CHANNELS 16
-	#define PWM_CHANNEL_0	0
-	#define PWM_CHANNEL_1	1
-	#define PWM_CHANNEL_2	2
-	#define PWM_CHANNEL_3	3
-	#define PWM_CHANNEL_4	4
-	#define PWM_CHANNEL_5	5
-	#define PWM_CHANNEL_6	6
-	#define PWM_CHANNEL_7	7
-	#define PWM_CHANNEL_8	8
-	#define PWM_CHANNEL_9	9
-	#define PWM_CHANNEL_10	10
-	#define PWM_CHANNEL_11	11
-	#define PWM_CHANNEL_12	12
-	#define PWM_CHANNEL_13	13
-	#define PWM_CHANNEL_14	14
-	#define PWM_CHANNEL_15	15
-#elif defined(__AVR__)// defined(USE_PCA9685)
-	#define PWM_STEP 1
-	#define PWM_MAX 255		// AVR or Arduino has only 8 bit PWM output
-	#define PWM_CHANNEL_0	5
-	#define PWM_CHANNEL_1	9
-	#define PWM_CHANNEL_2	3
-	#define PWM_CHANNEL_3	6
-	#define PWM_CHANNEL_4	10
-	#define PWM_CHANNEL_5	11
-	#if defined(__AVR_ATmega2560__)
-		/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
-		#define PWM_CHANNELS 16
-		#define PWM_CHANNEL_6	4
-		#define PWM_CHANNEL_7	2
-		#define PWM_CHANNEL_8	7
-		#define PWM_CHANNEL_9	8
-		#define PWM_CHANNEL_10	12
-		#define PWM_CHANNEL_11	13
-		#define PWM_CHANNEL_12	44
-		#define PWM_CHANNEL_13	45
-		#define PWM_CHANNEL_14	46
-		#define PWM_CHANNEL_15	47
-	#else
-		/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
-		#define PWM_CHANNELS 6
-	#endif // defined(__AVR_ATmega2560__)
-#elif defined (ESP8266)
-	#define PWM_STEP 4
-	#define PWM_MAX 1023	// ESP8266 has software PWM output with 10 bit precision
-	#define PWM_CHANNEL_0	D0
-	#define PWM_CHANNEL_1	D3
-	/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
-	#define PWM_CHANNELS 2
-#else	// elif defined(ESP8266)
-	#define PWM_STEP 1
-	#define PWM_MAX 255		// Asume a 8 bit PWM for all other cpu types
-	/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
-	#define PWM_CHANNELS 4
-	#define PWM_CHANNEL_0	FUNC_GPIO0
-	#define PWM_CHANNEL_1	FUNC_GPIO1
-	#define PWM_CHANNEL_2	FUNC_GPIO2
-	#define PWM_CHANNEL_3	FUNC_GPIO3
-#endif	// defined(__AVR__)
+#define PWM_STEP 5
+#define PWM_MAX 4095 // 12 bit PCA9685 Board
+/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
+#define PWM_CHANNELS 16
+#define PWM_CHANNEL_0 0
+#define PWM_CHANNEL_1 1
+#define PWM_CHANNEL_2 2
+#define PWM_CHANNEL_3 3
+#define PWM_CHANNEL_4 4
+#define PWM_CHANNEL_5 5
+#define PWM_CHANNEL_6 6
+#define PWM_CHANNEL_7 7
+#define PWM_CHANNEL_8 8
+#define PWM_CHANNEL_9 9
+#define PWM_CHANNEL_10 10
+#define PWM_CHANNEL_11 11
+#define PWM_CHANNEL_12 12
+#define PWM_CHANNEL_13 13
+#define PWM_CHANNEL_14 14
+#define PWM_CHANNEL_15 15
+#elif defined(__AVR__) // defined(USE_PCA9685)
+#define PWM_STEP 1
+#define PWM_MAX 255 // AVR or Arduino has only 8 bit PWM output
+#define PWM_CHANNEL_0 5
+#define PWM_CHANNEL_1 9
+#define PWM_CHANNEL_2 3
+#define PWM_CHANNEL_3 6
+#define PWM_CHANNEL_4 10
+#define PWM_CHANNEL_5 11
+#if defined(__AVR_ATmega2560__)
+/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
+#define PWM_CHANNELS 16
+#define PWM_CHANNEL_6 4
+#define PWM_CHANNEL_7 2
+#define PWM_CHANNEL_8 7
+#define PWM_CHANNEL_9 8
+#define PWM_CHANNEL_10 12
+#define PWM_CHANNEL_11 13
+#define PWM_CHANNEL_12 44
+#define PWM_CHANNEL_13 45
+#define PWM_CHANNEL_14 46
+#define PWM_CHANNEL_15 47
+#else
+/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
+#define PWM_CHANNELS 6
+#endif // defined(__AVR_ATmega2560__)
+#elif defined(ESP8266)
+#define PWM_STEP 4
+#define PWM_MAX 1023 // ESP8266 has software PWM output with 10 bit precision
+#define PWM_CHANNEL_0 D0
+#define PWM_CHANNEL_1 D3
+/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
+#define PWM_CHANNELS 2
+#else // elif defined(ESP8266)
+#define PWM_STEP 1
+#define PWM_MAX 255 // Asume a 8 bit PWM for all other cpu types
+/* Defines the maximum number of supported pwm channels. This is restriced by the PCA9685 controller */
+#define PWM_CHANNELS 4
+#define PWM_CHANNEL_0 FUNC_GPIO0
+#define PWM_CHANNEL_1 FUNC_GPIO1
+#define PWM_CHANNEL_2 FUNC_GPIO2
+#define PWM_CHANNEL_3 FUNC_GPIO3
+#endif // defined(__AVR__)
 
-typedef struct{
+typedef struct
+{
 	String Key;
 	String Value;
-}Option;
+} Option;
 
 #if defined(ESP8266)
-enum WlanMode{
+enum WlanMode
+{
 	WlanModeClient,
 	WlanModeAccessPoint
 };
 
-typedef struct{
-	WlanMode	Mode;
-	String		SSID;
-	String		PW;
-	bool		ManualIP;
-	IPAddress	IP;
-	IPAddress	Gateway;
-}WlanConfig;
+typedef struct
+{
+	WlanMode Mode;
+	String SSID;
+	String PW;
+	bool ManualIP;
+	IPAddress IP;
+	IPAddress Gateway;
+} WlanConfig;
 #endif
 
 /*This struct defines a target value at a specific time */
-typedef struct{
-	uint8_t		Value;			// Percentage value must between 0 and 100
-	time_t		Time;			// The time in seconds after 01.01.1970 when the value should be reached.
-}Target;
+typedef struct
+{
+	uint8_t Value; // Percentage value must between 0 and 100
+	time_t Time;   // The time in seconds after 01.01.1970 when the value should be reached.
+} Target;
 
-class PwmChannel{
+class PwmChannel
+{
 private:
-	int16_t		_PwmTarget = 0;
-	int16_t		_PwmValue = 1;
+	int16_t _PwmTarget = 0;
+	int16_t _PwmValue = 1;
 
 public:
-	uint8_t		ChannelAddress; // Contains the address or pin for setting the pwm value
-	Target		Targets[MAX_TARGET_COUNT_PER_CHANNEL];
-	uint8_t		TargetCount;
-	uint16_t	CurrentWriteValue;
-	bool		HasToWritePwm; // Indecates, that a new pwm values has to be written to the pwm device
-	bool		TestMode;
-	time_t		TestModeSetTime;
-	uint8_t		TestValue;
-	time_t		CurrentSecOfDay;
-	time_t		CurrentMilli;
+	uint8_t ChannelAddress; // Contains the address or pin for setting the pwm value
+	Target Targets[MAX_TARGET_COUNT_PER_CHANNEL];
+	uint8_t TargetCount;
+	uint16_t CurrentWriteValue;
+	bool HasToWritePwm; // Indecates, that a new pwm values has to be written to the pwm device
+	bool TestMode;
+	time_t TestModeSetTime;
+	uint8_t TestValue;
+	time_t CurrentSecOfDay;
+	time_t CurrentMilli;
 
-	PwmChannel(){
+	PwmChannel()
+	{
 		TestMode = false;
 	}
 
@@ -194,7 +210,8 @@ public:
 
 #if defined(USE_DS18B20_TEMP_SENSOR)
 
-class TemperatureReader {
+class TemperatureReader
+{
 public:
 	OneWire temp = OneWire(DS18B20_PIN);
 	bool Status = false;
@@ -212,7 +229,6 @@ public:
 	time_t _NextPossibleActivity;
 	uint8_t _UpdateIntervall = 10;
 
-
 	// Reads the temperature from the DS18B20 sensor and stores it to the member. The function decides by it self, if a temperatur value will we red.
 	// So, do not think, that a call of the function will update the _TemperatureInCelcius member for shure.
 	// The function returns true, if the temperature value was updated
@@ -222,23 +238,23 @@ public:
 
 #endif
 
-
-class AquaControl{
+class AquaControl
+{
 public:
 	time_t CurrentSecOfDay;
 	time_t CurrentMilli;
 
-#if defined (USE_PCA9685)
+#if defined(USE_PCA9685)
 	Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #endif
 
-#if defined (USE_DS18B20_TEMP_SENSOR)
+#if defined(USE_DS18B20_TEMP_SENSOR)
 	TemperatureReader _Temperature;
 	uint8_t _TemperatureUpdateIntervall = 10; // Update the temperatur every 10 sec
 #endif
 
 #if defined(ESP8266)
-	// Initializes the Wifi-Network 
+	// Initializes the Wifi-Network
 	void initESP8266NetworkConnection();
 	// Read ant write the Wlan configuration
 	bool readWlanConfig();
@@ -246,20 +262,23 @@ public:
 	// Read and write led configuration
 	bool readLedConfig();
 	bool writeLedConfig(uint8_t pwmChannel);
+	// Helper: Write targets to file with given path (reusable for schedules and macros)
+	bool writeTargetsToFile(const String &pathPrefix, uint8_t channel, PwmChannel &pwmChannel);
 #endif
 
 	// Initializes the time synch mechanisim (RTC or NTP)
-	void initTimeKeeper();	
+	void initTimeKeeper();
 
 	uint8_t getPhysicalChannelAddress(uint8_t channelNumber);
 
-	PwmChannel	_PwmChannels[PWM_CHANNELS];	// Stores the PWM chanels
-	bool		_IsFirstCycle;				// Indicates, that we have not set any pwm value
+	PwmChannel _PwmChannels[PWM_CHANNELS]; // Stores the PWM chanels
+	bool _IsFirstCycle;					   // Indicates, that we have not set any pwm value
 #if defined(ESP8266)
-	WlanConfig	_WlanConfig;
+	WlanConfig _WlanConfig;
 #endif
 
-	AquaControl(){
+	AquaControl()
+	{
 		_IsFirstCycle = true;
 	}
 
@@ -272,9 +291,8 @@ public:
 	void writePwmToDevice(uint8_t channel);
 
 #if defined(ESP8266)
-	IPAddress extractIPAddress(String sIP);
+	IPAddress extractIPAddress(const String &sIP);
 #endif
-
 };
 
-#endif //#ifndef __AQUACONTROL_H_
+#endif // #ifndef __AQUACONTROL_H_
