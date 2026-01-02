@@ -1,7 +1,19 @@
 # SBAquaControl - AI Coding Instructions
 
+## Context Engineering Setup
+
+This is a context-engineered project using VS Code's custom agents framework. All agents reference the following documentation:
+
+* [Product Vision and Goals](../PRODUCT.md): Feature overview and user workflows
+* [System Architecture and Design Principles](../ARCHITECTURE.md): Hardware, firmware, and web UI architecture
+* [Contributing Guidelines](../CONTRIBUTING.md): Build process, coding standards, and memory constraints
+
+**Key principle**: Start small with context, iterate based on observed agent behavior. Always prioritize readability and memory efficiency.
+
+---
+
 ## Project Overview
-ESP8266-based aquarium LED light controller (Arduino library) with WiFi web interface for daylight simulation. Supports up to 16 PWM channels via PCA9685 or native ESP8266/AVR pins.
+ESP8266-based aquarium LED light controller with WiFi web interface for 24-hour daylight simulation. Supports up to 16 PWM channels via PCA9685 I2C expander, with optional temperature monitoring and macro (override) system.
 
 ## Architecture & Key Components
 
@@ -43,12 +55,16 @@ Feature flags control build:
 
 ## Critical Workflows
 
-### Building & Platform Requirements
-**CRITICAL**: ESP8266 core version compatibility is fragile:
-- Arduino IDE: **Use ESP8266 v2.2.0 only** (v2.3.0 causes crashes)
-- Visual Micro: **Use ESP8266 v2.3.0 only** (v2.2.0 causes crashes)
+## Critical Workflows
 
-Install as Arduino library: Extract to `~/Documents/Arduino/libraries/SBAquaControl/`
+### Building & Platform Requirements
+**All builds must use PlatformIO CLI in VS Code's PlatformIO terminal:**
+```
+pio run -e esp8266 --target upload          # First-time USB upload
+pio run -e esp8266_ota --target upload      # WiFi OTA (after initial setup)
+pio device monitor                          # Monitor serial output
+```
+❌ **Never** run `pio` in regular PowerShell or Terminal. **Always** use VS Code's PlatformIO CLI terminal.
 
 ### Example Usage Pattern ([examples/AquaControlSketch/AquaControlSketch.ino](../examples/AquaControlSketch/AquaControlSketch.ino))
 ```cpp
@@ -104,8 +120,17 @@ Fritzing project: [extras/Circuit/SBAQC_1.0.fzz](../extras/Circuit/SBAQC_1.0.fzz
 ## Language & Comments
 Project documentation and comments are in **German** - maintain consistency when adding user-facing strings or comments.
 
+## Learning Progression Tracking
+
+Agents use [.github/learning-progress.md](.github/learning-progress.md) to track user understanding:
+- **Confidence flags** (1=too deep, 3=about right, 5=too basic) allow user to calibrate agent explanations
+- **Discussion counts** prevent redundant re-explanations of mastered topics
+- **Topic summaries** capture what's been covered for context
+
+**For learning agents**: Read learning-progress.md before explaining, adjust depth based on confidence flags, and append summaries after explanations for user review.
+
 ## Current Status
-Project version 0.5.001 (build 2017-12-10). Active development on test mode and web interface improvements.
+Project version 0.5.001 (build 2017-12-10). Active development on macro timer, time-setting API, and code cleanup.
 
 ## Planned UI Modernization (December 2025)
 
