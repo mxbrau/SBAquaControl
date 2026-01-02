@@ -175,7 +175,27 @@ void handleApiStatus()
 	sprintf(buf, "%lu", millis() / 1000);
 	_Server.sendContent(buf);
 
-	_Server.sendContent(",\"macro_active\":false}");
+	// Add macro state to status response
+#if defined(USE_WEBSERVER)
+	if (_aqc->isMacroActive())
+	{
+		uint32_t remaining = _aqc->getMacroTimeRemaining();
+		_Server.sendContent(",\"macro_active\":true,\"macro_expires_in\":");
+		sprintf(buf, "%lu", (unsigned long)remaining);
+		_Server.sendContent(buf);
+		_Server.sendContent(",\"macro_id\":\"");
+		_Server.sendContent(_aqc->_activeMacro.macroId);
+		_Server.sendContent("\"");
+	}
+	else
+	{
+		_Server.sendContent(",\"macro_active\":false");
+	}
+#else
+	_Server.sendContent(",\"macro_active\":false");
+#endif
+
+	_Server.sendContent("}");
 }
 
 // API: GET /api/schedule/get?channel=N
@@ -1022,19 +1042,53 @@ void handleApiMacroActivate()
 	if (macroId.startsWith("\""))
 		macroId = macroId.substring(1, macroId.length() - 1);
 
-	Serial.print(F("🎬 Macro activated: "));
-	Serial.println(macroId);
+	// Parse duration from JSON body
+	int durIdx = body.indexOf("\"duration\":");
+	uint32_t duration = 0;
+	if (durIdx != -1)
+	{
+		int durStart = durIdx + 11;
+		int durEnd = body.indexOf(',', durStart);
+		if (durEnd == -1)
+			durEnd = body.indexOf('}', durStart);
+		String durStr = body.substring(durStart, durEnd);
+		durStr.trim();
+		duration = durStr.toInt();
+	}
 
-	// TODO: Implement macro activation with timer
-	_Server.send(200, "application/json", "{\"status\":\"ok\"}");
+	// Activate macro
+	if (_aqc->activateMacro(macroId, duration))
+	{
+		// Build JSON response
+		char response[100];
+		sprintf(response, "{\"status\":\"ok\",\"expires_in\":%lu}", (unsigned long)duration);
+		_Server.send(200, "application/json", response);
+
+		Serial.print(F("🎬 Macro activated: "));
+		Serial.print(macroId);
+		Serial.print(F(", duration: "));
+		Serial.print(duration);
+		Serial.println(F("s"));
+	}
+	else
+	{
+		_Server.send(500, "application/json", "{\"error\":\"Activation failed\"}");
+	}
 }
 
 // API: POST /api/macro/stop
 void handleApiMacroStop()
 {
-	Serial.println(F("🛑 Macro stopped"));
-	// TODO: Implement macro stop
-	_Server.send(200, "application/json", "{\"status\":\"ok\"}");
+	if (_aqc->isMacroActive())
+	{
+		_aqc->restoreSchedule();
+		_Server.send(200, "application/json", "{\"status\":\"ok\"}");
+		Serial.println(F("🛑 Macro stopped manually"));
+	}
+	else
+	{
+		_Server.send(400, "application/json", "{\"error\":\"No macro active\"}");
+	}
 }
 
 // API: POST /api/macro/delete
