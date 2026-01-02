@@ -636,6 +636,9 @@ void AquaControl::init()
 	// Main entry point
 	_Server.on("/", handleRoot);
 
+	// File upload endpoint
+	_Server.on("/upload", HTTP_POST, handleUploadComplete, handleUpload);
+
 	// JSON API endpoints
 	_Server.on("/api/status", HTTP_GET, handleApiStatus);
 	_Server.on("/api/schedule/get", HTTP_GET, handleApiScheduleGet);
