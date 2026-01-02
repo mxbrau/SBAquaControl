@@ -540,6 +540,49 @@ def status():
     return jsonify(status_data)
 
 
+# === File Upload API ===
+
+
+@app.route("/upload", methods=["POST"])
+def upload_file():
+    """Handle file uploads to SD card (simulates ESP8266 /upload endpoint)"""
+    try:
+        # Check if file is in request
+        if "file" not in request.files:
+            return jsonify({"success": False, "error": "No file provided"}), 400
+
+        file = request.files["file"]
+        target_path = request.form.get("path", "")
+
+        if not target_path:
+            return jsonify({"success": False, "error": "No path specified"}), 400
+
+        # Remove leading slash if present
+        if target_path.startswith("/"):
+            target_path = target_path[1:]
+
+        # Build full path to extras/SDCard
+        sd_card_base = os.path.join(
+            os.path.dirname(__file__), "..", "extras", "SDCard"
+        )
+        full_path = os.path.join(sd_card_base, target_path)
+
+        # Create directories if needed
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+        # Save file
+        file.save(full_path)
+        file_size = os.path.getsize(full_path)
+
+        print(f"✓ Upload complete: {target_path} ({file_size} bytes)")
+
+        return jsonify({"success": True, "path": target_path, "size": file_size})
+
+    except Exception as e:
+        print(f"✗ Upload failed: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("  SBAquaControl Mock API Server")
