@@ -1,7 +1,7 @@
 ---
 description: Review code changes for quality, memory safety, and architectural alignment.
 name: Reviewer
-tools: ['search', 'applyEdit', 'fetch']
+tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'agent', 'todo']
 ---
 
 # Code Review Agent

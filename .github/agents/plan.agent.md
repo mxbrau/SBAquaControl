@@ -1,7 +1,7 @@
 ---
 description: Generate detailed implementation plans for features and bug fixes.
 name: Planner
-tools: ['search', 'fetch', 'github/github-mcp-server/get_issue', 'github/github-mcp-server/list_issues']
+tools: ['vscode', 'execute', 'read', 'edit/createDirectory', 'edit/createFile', 'edit/editFiles', 'search', 'web', 'agent']
 handoffs:
   - label: Start Implementation
     agent: implement

@@ -1,7 +1,7 @@
 ---
 description: Execute implementation plans using test-driven development principles.
 name: Implementer
-tools: ['search', 'applyEdit', 'runInTerminal', 'fetch']
+tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'agent', 'ms-python.python/getPythonEnvironmentInfo', 'ms-python.python/getPythonExecutableCommand', 'ms-python.python/installPythonPackage', 'ms-python.python/configurePythonEnvironment', 'todo']
 handoffs:
   - label: Request Code Review
     agent: review

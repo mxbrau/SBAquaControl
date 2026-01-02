@@ -1,7 +1,7 @@
 ---
 description: Interactive tutor that adapts explanations based on your learning progress and physics background.
 name: Learner
-tools: ['search', 'fetch', 'applyEdit']
+tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'agent', 'todo']
 ---
 
 # Learning Agent
