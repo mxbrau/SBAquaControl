@@ -16,7 +16,7 @@
             <h1>🐠 Aquarium Lichtsteuerung</h1>
             <div class="status">
                 <span class="status-item">🌡️ <span id="temp">--.-</span>°C</span>
-                <span class="status-item">🕐 <span id="time">--:--:--</span></span>
+                <span class="status-item clickable" onclick="showTimeSetDialog()" title="Klicken, um die Zeit zu ändern">🕐 <span id="time">--:--:--</span></span>
                 <span class="status-item" id="wifiStatus">📶 Verbunden</span>
             </div>
         </div>
@@ -102,6 +102,34 @@
                 <p class="loading">Lade Makros...</p>
             </div>
         </section>
+    </div>
+
+    <!-- Time Set Modal -->
+    <div id="timeSetModal" class="modal hidden">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>⏰ Zeit einstellen</h2>
+                <button onclick="closeTimeSetDialog()" class="btn-close">×</button>
+            </div>
+            <div class="modal-body">
+                <p class="help-text">Aktuelle Zeit: <strong id="currentTimeDisplay">--:--:--</strong></p>
+                <div class="form-group">
+                    <label>Neue Zeit:</label>
+                    <input type="time" id="timeSetInput" step="1" class="time-input">
+                </div>
+                <div class="modal-actions">
+                    <button onclick="syncTimeWithBrowser()" class="btn btn-primary">
+                        📱 Mit Browser synchronisieren
+                    </button>
+                    <button onclick="setTimeManually()" class="btn btn-success">
+                        ✅ Zeit setzen
+                    </button>
+                    <button onclick="closeTimeSetDialog()" class="btn">
+                        Abbrechen
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Macro Wizard Modal -->
