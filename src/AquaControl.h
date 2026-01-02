@@ -52,6 +52,8 @@ Copyright 2016
 // Webserver handlers
 void handleRoot();
 void handleNotFound();
+void handleUpload();
+void handleUploadComplete();
 
 // JSON API handlers
 void handleApiStatus();

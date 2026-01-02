@@ -1152,4 +1152,158 @@ void handleApiDebug()
 	Serial.println(F("%"));
 }
 
+// File upload handler - receives file chunks
+File _uploadFile; // Global File object to persist across upload chunks
+String _uploadPath = "";
+
+void handleUpload()
+{
+	HTTPUpload &upload = _Server.upload();
+
+	if (upload.status == UPLOAD_FILE_START)
+	{
+		// Get the target path from form data
+		_uploadPath = _Server.arg("path");
+
+		if (_uploadPath.length() == 0)
+		{
+			Serial.println(F("Upload error: No path specified"));
+			return;
+		}
+
+		// Remove leading slash if present
+		if (_uploadPath.startsWith("/"))
+		{
+			_uploadPath = _uploadPath.substring(1);
+		}
+
+		Serial.print(F("📤 Upload started: "));
+		Serial.println(_uploadPath);
+
+		// Delete existing file if present
+		if (SD.exists(_uploadPath.c_str()))
+		{
+			SD.remove(_uploadPath.c_str());
+			Serial.print(F("  Removed existing file: "));
+			Serial.println(_uploadPath);
+		}
+
+		// Open file for writing
+		_uploadFile = SD.open(_uploadPath.c_str(), FILE_WRITE);
+		if (!_uploadFile)
+		{
+			Serial.print(F("❌ Failed to open file for writing: "));
+			Serial.println(_uploadPath);
+		}
+	}
+	else if (upload.status == UPLOAD_FILE_WRITE)
+	{
+		// Write chunk to file
+		if (_uploadFile)
+		{
+			size_t written = _uploadFile.write(upload.buf, upload.currentSize);
+			if (written != upload.currentSize)
+			{
+				Serial.print(F("⚠️  Write size mismatch: expected "));
+				Serial.print(upload.currentSize);
+				Serial.print(F(", wrote "));
+				Serial.println(written);
+			}
+		}
+		else
+		{
+			Serial.println(F("❌ File not open for writing"));
+		}
+	}
+	else if (upload.status == UPLOAD_FILE_END)
+	{
+		// Close file
+		if (_uploadFile)
+		{
+			_uploadFile.close();
+			Serial.print(F("✓ Upload complete: "));
+			Serial.print(_uploadPath);
+			Serial.print(F(" ("));
+			Serial.print(upload.totalSize);
+			Serial.println(F(" bytes)"));
+		}
+		else
+		{
+			Serial.println(F("❌ File was not open at upload end"));
+		}
+	}
+	else if (upload.status == UPLOAD_FILE_ABORTED)
+	{
+		if (_uploadFile)
+		{
+			_uploadFile.close();
+		}
+		Serial.println(F("❌ Upload aborted"));
+		_uploadPath = "";
+	}
+}
+
+// Upload completion handler - sends JSON response
+void handleUploadComplete()
+{
+	String targetPath = _Server.arg("path");
+
+	if (targetPath.length() == 0)
+	{
+		_Server.send(400, "application/json", "{\"success\":false,\"error\":\"No path specified\"}");
+		Serial.println(F("❌ Upload failed: No path specified"));
+		return;
+	}
+
+	// Remove leading slash if present
+	if (targetPath.startsWith("/"))
+	{
+		targetPath = targetPath.substring(1);
+	}
+
+	// Verify file was created successfully
+	if (SD.exists(targetPath.c_str()))
+	{
+		File f = SD.open(targetPath.c_str(), FILE_READ);
+		if (f)
+		{
+			size_t fileSize = f.size();
+			f.close();
+
+			// Send success response with minimal String usage
+			_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+			_Server.send(200, "application/json", "");
+
+			_Server.sendContent("{\"success\":true,\"path\":\"");
+			_Server.sendContent(targetPath);
+			_Server.sendContent("\",\"size\":");
+
+			char buf[16];
+			sprintf(buf, "%u", (unsigned int)fileSize);
+			_Server.sendContent(buf);
+			_Server.sendContent("}");
+
+			Serial.print(F("✅ Upload confirmed: "));
+			Serial.print(targetPath);
+			Serial.print(F(" ("));
+			Serial.print(fileSize);
+			Serial.println(F(" bytes)"));
+		}
+		else
+		{
+			_Server.send(500, "application/json", "{\"success\":false,\"error\":\"File created but cannot be read\"}");
+			Serial.println(F("❌ File created but cannot be read"));
+		}
+	}
+	else
+	{
+		_Server.send(500, "application/json", "{\"success\":false,\"error\":\"File upload failed\"}");
+		Serial.print(F("❌ Upload failed: File not found after upload: "));
+		Serial.println(targetPath);
+	}
+
+	// Reset upload state
+	_uploadPath = "";
+}
+
 #endif
