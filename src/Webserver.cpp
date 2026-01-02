@@ -1216,7 +1216,8 @@ void handleUpload()
 				Serial.println(written);
 				// Close file and abort upload on write error
 				_uploadFile.close();
-				_uploadFile = File(); // Reset to invalid file
+				// Explicitly invalidate the file object to prevent further writes
+				_uploadFile = File();
 				Serial.println(F("❌ Upload aborted due to write error"));
 			}
 		}
@@ -1294,7 +1295,7 @@ void handleUploadComplete()
 			_Server.sendContent("\",\"size\":");
 
 			char buf[16];
-			sprintf(buf, "%u", (unsigned int)fileSize);
+			snprintf(buf, sizeof(buf), "%u", (unsigned int)fileSize);
 			_Server.sendContent(buf);
 			_Server.sendContent("}");
 
