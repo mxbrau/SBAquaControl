@@ -17,6 +17,7 @@ extern "C" ESP8266WebServer _Server;
 extern "C" AquaControl *_aqc;
 #if defined(USE_RTC_DS3231)
 extern DS3232RTC RTC;
+extern time_t getRTCTime();
 #endif
 
 void handleRoot()
