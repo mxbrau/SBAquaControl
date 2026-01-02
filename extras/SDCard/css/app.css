@@ -525,39 +525,3 @@ body {
         width: 95%;
     }
 }
-
-/* Clickable Time */
-.status-item.clickable {
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.status-item.clickable:hover {
-    background: rgba(255, 255, 255, 0.35);
-    transform: scale(1.05);
-}
-
-.status-item.clickable:active {
-    transform: scale(0.98);
-}
-
-/* Time Input Field */
-.time-input {
-    font-size: 1.2rem !important;
-    font-family: monospace;
-    text-align: center;
-    padding: 12px !important;
-}
-
-/* Modal Actions */
-.modal-body {
-    padding: 20px;
-}
-
-.modal-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    margin-top: 20px;
-}

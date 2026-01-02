@@ -111,13 +111,5 @@ const API = {
             method: 'POST',
             body: JSON.stringify({ id })
         });
-    },
-
-    // Time
-    async setTime(hour, minute, second) {
-        return this.call(CONFIG.api.timeSet, {
-            method: 'POST',
-            body: JSON.stringify({ hour, minute, second })
-        });
     }
 };
