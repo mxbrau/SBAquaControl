@@ -1173,7 +1173,7 @@ void handleApiTimeSet()
 		hourEnd = body.indexOf('}', hourStart);
 	String hourStr = body.substring(hourStart, hourEnd);
 	hourStr.trim();
-	int hour = hourStr.toInt();
+	int hour = hourStr.toInt(); // Note: toInt() returns 0 for invalid input; validation below will catch issues
 
 	// Parse minute
 	int minuteIdx = body.indexOf("\"minute\":");
@@ -1229,7 +1229,9 @@ void handleApiTimeSet()
 	setSyncProvider(getRTCTime);
 	if (timeStatus() != timeSet)
 	{
-		_Server.send(500, "application/json", "{\"error\":\"RTC sync failed\"}");
+		Serial.print(F("ERROR: RTC sync failed, timeStatus="));
+		Serial.println(timeStatus());
+		_Server.send(500, "application/json", "{\"error\":\"RTC sync failed - time not set\"}");
 		return;
 	}
 

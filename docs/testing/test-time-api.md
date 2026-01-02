@@ -29,7 +29,7 @@ curl -X POST http://192.168.0.8/api/time/set \
 **HTTP Status**: 200 OK
 
 **Verification**:
-- Serial output shows: `✅ Time set to: 14:30:0`
+- Serial output shows: `✅ Time set to: 14:30:00`
 - GET `/api/status` should show `"time":"14:30:XX"` (where XX is seconds elapsed)
 
 ---
@@ -275,7 +275,7 @@ curl -X POST http://192.168.0.8/api/time/set \
 
 When testing, monitor the serial output at 19200 baud to observe:
 - JSON body received: `Time set request body: {"hour":14,"minute":30,"second":0}`
-- Success confirmation: `✅ Time set to: 14:30:0`
+- Success confirmation: `✅ Time set to: 14:30:00`
 - Any error messages if RTC sync fails
 
 ---
