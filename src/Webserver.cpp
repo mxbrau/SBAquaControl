@@ -17,6 +17,7 @@ extern "C" ESP8266WebServer _Server;
 extern "C" AquaControl *_aqc;
 #if defined(USE_RTC_DS3231)
 extern DS3232RTC RTC;
+extern time_t getRTCTime();
 #endif
 
 void handleRoot()
@@ -1154,7 +1155,7 @@ void handleApiDebug()
 
 // File upload handler - receives file chunks
 // Note: Global variables are safe here because ESP8266WebServer is single-threaded
-static File _uploadFile; // Persists across upload chunks
+static File _uploadFile;		// Persists across upload chunks
 static String _uploadPath = ""; // Stores target path from form data
 
 void handleUpload()
@@ -1320,6 +1321,110 @@ void handleUploadComplete()
 
 	// Reset upload state
 	_uploadPath = "";
+}
+
+// API: POST /api/time/set
+void handleApiTimeSet()
+{
+#if defined(USE_RTC_DS3231)
+	String body = _Server.arg("plain");
+	Serial.print(F("Time set request body: "));
+	Serial.println(body);
+
+	// Parse hour
+	int hourIdx = body.indexOf("\"hour\":");
+	if (hourIdx == -1)
+	{
+		_Server.send(400, "application/json", "{\"error\":\"Missing hour\"}");
+		return;
+	}
+	int hourStart = hourIdx + 7;
+	int hourEnd = body.indexOf(',', hourStart);
+	if (hourEnd == -1)
+		hourEnd = body.indexOf('}', hourStart);
+	String hourStr = body.substring(hourStart, hourEnd);
+	hourStr.trim();
+	int hour = hourStr.toInt(); // Note: toInt() returns 0 for invalid input; validation below will catch issues
+
+	// Parse minute
+	int minuteIdx = body.indexOf("\"minute\":");
+	if (minuteIdx == -1)
+	{
+		_Server.send(400, "application/json", "{\"error\":\"Missing minute\"}");
+		return;
+	}
+	int minuteStart = minuteIdx + 9;
+	int minuteEnd = body.indexOf(',', minuteStart);
+	if (minuteEnd == -1)
+		minuteEnd = body.indexOf('}', minuteStart);
+	String minuteStr = body.substring(minuteStart, minuteEnd);
+	minuteStr.trim();
+	int minute = minuteStr.toInt();
+
+	// Parse second
+	int secondIdx = body.indexOf("\"second\":");
+	if (secondIdx == -1)
+	{
+		_Server.send(400, "application/json", "{\"error\":\"Missing second\"}");
+		return;
+	}
+	int secondStart = secondIdx + 9;
+	int secondEnd = body.indexOf(',', secondStart);
+	if (secondEnd == -1)
+		secondEnd = body.indexOf('}', secondStart);
+	String secondStr = body.substring(secondStart, secondEnd);
+	secondStr.trim();
+	int second = secondStr.toInt();
+
+	// Validate ranges
+	if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59)
+	{
+		_Server.send(400, "application/json", "{\"error\":\"Invalid time values (hour: 0-23, minute: 0-59, second: 0-59)\"}");
+		return;
+	}
+
+	// Create tmElements_t struct from input, preserving current date
+	tmElements_t tm;
+	tm.Hour = hour;
+	tm.Minute = minute;
+	tm.Second = second;
+	tm.Day = day(); // Preserve current date
+	tm.Month = month();
+	tm.Year = year() - 1970;
+
+	// Convert to time_t and write to RTC
+	time_t t = makeTime(tm);
+	RTC.set(t);
+
+	// Sync system time with RTC
+	setSyncProvider(getRTCTime);
+	if (timeStatus() != timeSet)
+	{
+		Serial.print(F("ERROR: RTC sync failed, timeStatus="));
+		Serial.println(timeStatus());
+		_Server.send(500, "application/json", "{\"error\":\"RTC sync failed - time not set\"}");
+		return;
+	}
+
+	// Stream JSON response with updated time
+	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+	_Server.send(200, "application/json", "");
+
+	char buf[16];
+	_Server.sendContent("{\"status\":\"ok\",\"time\":\"");
+	sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
+	_Server.sendContent(buf);
+	_Server.sendContent("\"}");
+
+	Serial.print(F("✅ Time set to: "));
+	Serial.print(hour);
+	Serial.print(F(":"));
+	Serial.print(minute);
+	Serial.print(F(":"));
+	Serial.println(second);
+#else
+	_Server.send(501, "application/json", "{\"error\":\"RTC not available\"}");
+#endif
 }
 
 #endif

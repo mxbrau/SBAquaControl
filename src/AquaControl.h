@@ -74,6 +74,7 @@ void handleApiMacroStop();
 void handleApiMacroDelete();
 void handleApiReboot();
 void handleApiDebug();
+void handleApiTimeSet();
 #endif
 
 #if defined(__AVR__)

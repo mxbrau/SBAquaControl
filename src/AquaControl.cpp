@@ -658,6 +658,7 @@ void AquaControl::init()
 	_Server.on("/api/macro/delete", HTTP_POST, handleApiMacroDelete);
 	_Server.on("/api/reboot", HTTP_POST, handleApiReboot);
 	_Server.on("/api/debug", HTTP_GET, handleApiDebug);
+	_Server.on("/api/time/set", HTTP_POST, handleApiTimeSet);
 
 	_Server.onNotFound(handleNotFound);
 	_Server.begin();
