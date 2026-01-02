@@ -1153,8 +1153,9 @@ void handleApiDebug()
 }
 
 // File upload handler - receives file chunks
-File _uploadFile; // Global File object to persist across upload chunks
-String _uploadPath = "";
+// Note: Global variables are safe here because ESP8266WebServer is single-threaded
+static File _uploadFile; // Persists across upload chunks
+static String _uploadPath = ""; // Stores target path from form data
 
 void handleUpload()
 {
@@ -1188,12 +1189,17 @@ void handleUpload()
 			Serial.println(_uploadPath);
 		}
 
+		// Note: SD library doesn't support mkdir, so directories must exist
+		// Users should manually create directory structure on SD card before upload
+		// or use the web interface to create necessary folders
+
 		// Open file for writing
 		_uploadFile = SD.open(_uploadPath.c_str(), FILE_WRITE);
 		if (!_uploadFile)
 		{
 			Serial.print(F("❌ Failed to open file for writing: "));
 			Serial.println(_uploadPath);
+			Serial.println(F("  Ensure parent directory exists on SD card"));
 		}
 	}
 	else if (upload.status == UPLOAD_FILE_WRITE)
@@ -1208,6 +1214,10 @@ void handleUpload()
 				Serial.print(upload.currentSize);
 				Serial.print(F(", wrote "));
 				Serial.println(written);
+				// Close file and abort upload on write error
+				_uploadFile.close();
+				_uploadFile = File(); // Reset to invalid file
+				Serial.println(F("❌ Upload aborted due to write error"));
 			}
 		}
 		else
@@ -1246,19 +1256,24 @@ void handleUpload()
 // Upload completion handler - sends JSON response
 void handleUploadComplete()
 {
-	String targetPath = _Server.arg("path");
+	// Use the path stored during upload process (more reliable than re-reading form data)
+	String targetPath = _uploadPath;
+
+	if (targetPath.length() == 0)
+	{
+		// Fallback to form data if upload path wasn't set
+		targetPath = _Server.arg("path");
+		if (targetPath.startsWith("/"))
+		{
+			targetPath = targetPath.substring(1);
+		}
+	}
 
 	if (targetPath.length() == 0)
 	{
 		_Server.send(400, "application/json", "{\"success\":false,\"error\":\"No path specified\"}");
 		Serial.println(F("❌ Upload failed: No path specified"));
 		return;
-	}
-
-	// Remove leading slash if present
-	if (targetPath.startsWith("/"))
-	{
-		targetPath = targetPath.substring(1);
 	}
 
 	// Verify file was created successfully

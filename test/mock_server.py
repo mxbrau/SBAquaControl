@@ -545,7 +545,12 @@ def status():
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    """Handle file uploads to SD card (simulates ESP8266 /upload endpoint)"""
+    """Handle file uploads to SD card (simulates ESP8266 /upload endpoint)
+    
+    Note: This mock implementation creates directories automatically, but the
+    real ESP8266 firmware does NOT create directories. Users must manually
+    create directory structure on SD card before uploading files to subdirectories.
+    """
     try:
         # Check if file is in request
         if "file" not in request.files:
@@ -567,7 +572,7 @@ def upload_file():
         )
         full_path = os.path.join(sd_card_base, target_path)
 
-        # Create directories if needed
+        # Create directories if needed (NOTE: Real firmware does NOT do this!)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
         # Save file
