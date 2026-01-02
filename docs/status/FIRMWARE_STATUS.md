@@ -40,7 +40,7 @@
 ## Technical Details
 
 ### Linear Interpolation Algorithm
-Located in [src/AquaControl.cpp](src/AquaControl.cpp) - `PwmChannel::proceedCycle()`
+Located in [src/AquaControl.cpp](../../src/AquaControl.cpp) - `PwmChannel::proceedCycle()`
 
 ```cpp
 // Find bounding targets
@@ -74,7 +74,7 @@ pwmValue = lastTarget.Value + (dv × progress)
 1. **String Concatenation in Boot Sequence**
    - Removed `String(F("...")) + String(...)` concatenations in `readLedConfig()`
    - Impact: Eliminated heap fragmentation during startup
-   - Files: [src/AquaControl.cpp](src/AquaControl.cpp) lines 349, 357
+   - Files: [src/AquaControl.cpp](../../src/AquaControl.cpp) lines 349, 357
 
 2. **RAM Over-allocation**
    - Reduced `MAX_TARGET_COUNT_PER_CHANNEL` from 128 → 32
