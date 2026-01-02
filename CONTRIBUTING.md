@@ -1,5 +1,12 @@
 # Contributing to SBAquaControl
 
+**See Also:**
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System internals and technical design
+- [docs/status/DEVELOPMENT.md](docs/status/DEVELOPMENT.md) - Extended workflow guide
+- [docs/status/TESTING_GUIDE.md](docs/status/TESTING_GUIDE.md) - Validation procedures
+
+---
+
 Welcome! This guide helps you understand the codebase structure and development workflows for SBAquaControl.
 
 ## Before You Start
@@ -131,7 +138,7 @@ Example: `writeWlanConfig()` in AquaControl.cpp
 ## Testing Workflow
 
 ### Manual Testing
-1. Load [TESTING_GUIDE.md](TESTING_GUIDE.md) for test cases
+1. Load [docs/status/TESTING_GUIDE.md](docs/status/TESTING_GUIDE.md) for test cases
 2. Use "Test Mode" in web UI to verify channel behavior
 3. Inspect Serial monitor for error messages
 
@@ -215,6 +222,6 @@ git commit -m "Build: add macro timer tracking (issue #1)"
 
 ## Questions?
 
-Refer to [ARCHITECTURE.md](ARCHITECTURE.md) for system design, [QUICKSTART.md](QUICKSTART.md) for setup, or [TESTING_GUIDE.md](TESTING_GUIDE.md) for validation workflows.
+Refer to [ARCHITECTURE.md](ARCHITECTURE.md) for system design, [README.md](README.md#-quick-start) for setup, or [docs/status/TESTING_GUIDE.md](docs/status/TESTING_GUIDE.md) for validation workflows.
 
 For learning the code: Use the custom `learn` agent in VS Code Chat to get adaptive explanations. Update [.github/learning-progress.md](.github/learning-progress.md) confidence flags as you become familiar with concepts.

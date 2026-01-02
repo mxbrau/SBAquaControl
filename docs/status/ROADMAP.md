@@ -492,11 +492,11 @@ Guidelines for future developers:
 
 ## References
 
-- **Current Source**: [src/](../src/)
-- **UI Source**: [extras/SDCard/](../extras/SDCard/)
+- **Current Source**: [src/](../../src/)
+- **UI Source**: [extras/SDCard/](../../extras/SDCard/)
 - **Testing Guide**: [TESTING_GUIDE.md](TESTING_GUIDE.md)
 - **Firmware Status**: [FIRMWARE_STATUS.md](FIRMWARE_STATUS.md)
-- **UI Updates**: [UI_UPDATE_LINEAR_INTERPOLATION.md](UI_UPDATE_LINEAR_INTERPOLATION.md)
+- **UI Updates**: [UI_UPDATE_LINEAR_INTERPOLATION.md](../design/UI_UPDATE_LINEAR_INTERPOLATION.md)
 
 ---
 

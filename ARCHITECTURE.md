@@ -1,10 +1,18 @@
 # SBAquaControl System Architecture
 
+**See Also:**
+- [PRODUCT.md](PRODUCT.md) - User-facing features and workflows
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflows and coding standards
+- [docs/design/MACRO_REFACTORING.md](docs/design/MACRO_REFACTORING.md) - Macro system design details
+- [docs/design/UI_UPDATE_LINEAR_INTERPOLATION.md](docs/design/UI_UPDATE_LINEAR_INTERPOLATION.md) - UI visualization changes
+
+---
+
 ## Overview
 
 SBAquaControl is an ESP8266-based aquarium LED light controller with WiFi-enabled web interface. The system provides 24-hour schedule automation for up to 16 PWM channels via PCA9685 I2C controller, real-time temperature monitoring, and macro (override) functionality for temporary lighting patterns.
 
-**Key constraint**: ESP8266 has **160KB total RAM** with ~50-55% reserved at runtime. Memory efficiency is critical.
+**Key constraint**: ESP8266 has **160KB total RAM** with ~50-55% reserved at runtime. Memory efficiency is critical (see [CONTRIBUTING.md](CONTRIBUTING.md#memory-constraints)).
 
 ---
 

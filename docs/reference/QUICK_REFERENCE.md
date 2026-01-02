@@ -8,13 +8,11 @@
 
 ### Flash Firmware
 ```bash
-# Clone and open in Arduino IDE or PlatformIO
-platformio run -t upload
+# Clone and open in VS Code with PlatformIO
+pio run -e esp8266 --target upload
 
-# Or via Arduino IDE:
-1. Tools → Board → ESP8266
-2. Tools → Port → COM3 (or your port)
-3. Upload
+# Or for OTA (WiFi) updates after initial setup:
+pio run -e esp8266_ota --target upload
 ```
 
 ### Access Web UI
@@ -326,9 +324,8 @@ watch -n 1 'curl -s http://192.168.103.8/api/debug | jq .free_heap'
 
 ### View Serial Output
 ```bash
-# Arduino IDE: Serial Monitor at 19200 baud
-# Or PlatformIO:
-platformio device monitor --baud 19200
+# PlatformIO (Ctrl+Alt+S in VS Code):
+pio device monitor --baud 19200
 ```
 
 ### Clear All Schedules
@@ -424,9 +421,12 @@ config/macros.json   → Macros (future Phase 3)
 
 ### Manual Update (Via USB)
 ```
-1. Connect ESP8266 via USB
-2. Arduino IDE → Upload
+1. Connect ESP8266 via USB (first time only)
+2. pio run -e esp8266 --target upload
 3. Device reboots and continues operation
+
+# For subsequent updates, use OTA:
+pio run -e esp8266_ota --target upload
 ```
 
 ### SD Card Update

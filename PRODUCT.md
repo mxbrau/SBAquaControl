@@ -1,5 +1,13 @@
 # SBAquaControl Product Overview
 
+**See Also:**
+- [README.md](README.md#-quick-start) - Setup instructions and getting started
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical implementation details
+- [docs/status/ROADMAP.md](docs/status/ROADMAP.md) - Future development plans
+- [docs/design/MACRO_REFACTORING.md](docs/design/MACRO_REFACTORING.md) - Macro system details
+
+---
+
 **SBAquaControl** is a WiFi-enabled aquarium LED lighting controller for professional-grade daylight simulation. It automates color and brightness across up to 16 LED channels with customizable 24-hour schedules, supports emergency overrides via temporary "macros," and provides real-time monitoring via a modern web interface.
 
 ---
@@ -164,12 +172,12 @@
 4. Set 20:00 @ 0% brightness
 5. Save → schedule active
 
-See [QUICKSTART.md](QUICKSTART.md) for step-by-step guide.
+See [README.md](README.md#-quick-start) for step-by-step guide.
 
 ---
 
 ## Support & Feedback
 
-- **Documentation**: [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), [TESTING_GUIDE.md](TESTING_GUIDE.md)
+- **Documentation**: [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), [docs/status/TESTING_GUIDE.md](docs/status/TESTING_GUIDE.md)
 - **Issues**: GitHub Issues (for development tracking)
 - **Code**: Open-source, available for modification
