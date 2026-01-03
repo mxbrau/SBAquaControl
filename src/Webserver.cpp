@@ -741,34 +741,44 @@ uint32_t computeMacroDuration(const String &macroId, String &outName)
 			File macroFile = SD.open(sTempFilename);
 			if (macroFile)
 			{
+				// Use char buffer instead of String to avoid heap fragmentation
+				char lineBuf[64];
 				while (macroFile.available())
 				{
-					String sLine = macroFile.readStringUntil(10);
-					if (sLine.length() > 0 && sLine.charAt(sLine.length() - 1) == 13)
+					int len = macroFile.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
+					if (len == 0)
+						continue;
+					lineBuf[len] = '\0';
+
+					// Strip CR if present
+					if (len > 0 && lineBuf[len - 1] == '\r')
 					{
-						sLine = sLine.substring(0, sLine.length() - 1);
+						lineBuf[len - 1] = '\0';
+						len--;
 					}
-					if (sLine.length() == 0 || sLine.startsWith("//"))
+
+					// Skip empty lines or comments
+					if (len == 0 || (lineBuf[0] == '/' && lineBuf[1] == '/'))
 						continue;
 
-					int semiIdx = sLine.indexOf(';');
-					if (semiIdx == -1)
+					// Find semicolon separator
+					char *semi = strchr(lineBuf, ';');
+					if (!semi)
 						continue;
 
-					String timeStr = sLine.substring(0, semiIdx);
-
-					// Parse time (MM:SS or seconds)
-					int colonIdx = timeStr.indexOf(':');
+					// Parse time from start to semicolon
 					long timeVal = 0;
-					if (colonIdx != -1)
+					char *colon = strchr(lineBuf, ':');
+					if (colon && colon < semi)
 					{
-						int mins = timeStr.substring(0, colonIdx).toInt();
-						int secs = timeStr.substring(colonIdx + 1).toInt();
-						timeVal = (mins * 60) + secs;
+						// MM:SS format
+						*colon = '\0';
+						timeVal = atoi(lineBuf) * 60 + atoi(colon + 1);
 					}
 					else
 					{
-						timeVal = timeStr.toInt();
+						// Seconds format
+						timeVal = atoi(lineBuf);
 					}
 
 					if ((uint32_t)timeVal > maxTime)
@@ -923,7 +933,7 @@ void handleApiMacroGet()
 					_Server.sendContent(",");
 				targetFirst = false;
 
-				sprintf(buf, "{\"time\":%ld,\"value\":%d}", timeVal, value);
+				sprintf(buf, "{\"time\":%ld,\"value\":%d,\"isControl\":true}", timeVal, value);
 				_Server.sendContent(buf);
 			}
 			macroFile.close();
@@ -940,45 +950,20 @@ void handleApiMacroSave()
 {
 	String body = _Server.arg("plain");
 
-	// Parse macro id (user-provided name)
-	int idIdx = body.indexOf("\"id\":");
-	if (idIdx == -1)
-	{
-		_Server.send(400, "application/json", "{\"error\":\"Missing id\"}");
-		return;
-	}
-
-	int idStart = idIdx + 5;
-	int idEnd = body.indexOf(',', idStart);
-	if (idEnd == -1)
-		idEnd = body.indexOf('}', idStart);
-	String userMacroId = body.substring(idStart, idEnd);
-	userMacroId.trim();
-	if (userMacroId.startsWith("\""))
-		userMacroId = userMacroId.substring(1, userMacroId.length() - 1);
-
-	if (userMacroId.length() == 0)
-	{
-		_Server.send(400, "application/json", "{\"error\":\"Invalid id\"}");
-		return;
-	}
-
 	// Generate normalized macro ID: find next available macro_NNN
+	// Note: User-provided ID is ignored; we always use macro_NNN format for file stability
 	uint16_t macroNum = 1;
-	String normalizedMacroId;
+	char normalizedMacroId[16];
 	char sTempFilename[50];
 
-	// Find first available macro number
+	// Find first available macro number using sprintf (avoids String allocations)
 	while (macroNum <= 999)
 	{
-		normalizedMacroId = "macro_";
-		normalizedMacroId += (macroNum <= 9 ? "00" : (macroNum <= 99 ? "0" : ""));
-		normalizedMacroId += String(macroNum);
+		// Build ID directly into buffer
+		sprintf(normalizedMacroId, "macro_%03d", macroNum);
 
-		String checkPath = "macros/";
-		checkPath += normalizedMacroId;
-		checkPath += "_ch00.cfg";
-		checkPath.toCharArray(sTempFilename, 50);
+		// Build check path directly
+		sprintf(sTempFilename, "macros/%s_ch00.cfg", normalizedMacroId);
 
 		// If this macro already exists, use it (edit mode); otherwise keep looking for next available
 		if (!SD.exists(sTempFilename))
@@ -988,7 +973,7 @@ void handleApiMacroSave()
 		macroNum++;
 	}
 
-	// Use normalized ID for file storage
+	// Use normalized ID for file storage (single String conversion only when needed)
 	String macroId = normalizedMacroId;
 
 	// Parse channels array
@@ -1016,53 +1001,48 @@ void handleApiMacroSave()
 		if (objEnd == -1)
 			break;
 
-		String obj = channelsStr.substring(objStart + 1, objEnd);
-
-		// Parse targets array from object
-		int targetsIdx = obj.indexOf("\"targets\":[");
-		if (targetsIdx != -1)
+		// Parse targets array directly from channels substring to avoid extra allocation
+		int targetsIdx = channelsStr.indexOf("\"targets\":[", objStart);
+		if (targetsIdx != -1 && targetsIdx < objEnd)
 		{
 			int targetsStart = targetsIdx + 11;
-			int targetsEnd = obj.indexOf(']', targetsStart);
-			String targetsStr = obj.substring(targetsStart, targetsEnd);
+			int targetsEnd = channelsStr.indexOf(']', targetsStart);
 
 			// Create temp channel to store targets
 			PwmChannel tempChannel;
 			tempChannel.TargetCount = 0;
 
-			// Parse target objects
-			unsigned int tPos = 0;
-			while (tPos < targetsStr.length() && tempChannel.TargetCount < MAX_TARGET_COUNT_PER_CHANNEL)
+			// Parse target objects directly from channelsStr to reduce String allocations
+			unsigned int tPos = targetsStart;
+			while (tPos < (unsigned int)targetsEnd && tempChannel.TargetCount < MAX_TARGET_COUNT_PER_CHANNEL)
 			{
-				int tObjStart = targetsStr.indexOf('{', tPos);
-				if (tObjStart == -1)
+				int tObjStart = channelsStr.indexOf('{', tPos);
+				if (tObjStart == -1 || tObjStart >= targetsEnd)
 					break;
-				int tObjEnd = targetsStr.indexOf('}', tObjStart);
-				if (tObjEnd == -1)
+				int tObjEnd = channelsStr.indexOf('}', tObjStart);
+				if (tObjEnd == -1 || tObjEnd > targetsEnd)
 					break;
 
-				String tObj = targetsStr.substring(tObjStart + 1, tObjEnd);
+				// Parse time directly from channelsStr
+				int timeIdx = channelsStr.indexOf("\"time\":", tObjStart);
+				int valueIdx = channelsStr.indexOf("\"value\":", tObjStart);
 
-				// Parse time
-				int timeIdx = tObj.indexOf("\"time\":");
-				int valueIdx = tObj.indexOf("\"value\":");
-
-				if (timeIdx != -1 && valueIdx != -1)
+				if (timeIdx != -1 && timeIdx < tObjEnd && valueIdx != -1 && valueIdx < tObjEnd)
 				{
 					int timeStart = timeIdx + 7;
-					int timeEnd = tObj.indexOf(',', timeStart);
-					if (timeEnd == -1)
-						timeEnd = tObj.indexOf('}', timeStart);
-					String timeStr = tObj.substring(timeStart, timeEnd);
+					int timeEnd = channelsStr.indexOf(',', timeStart);
+					if (timeEnd == -1 || timeEnd > tObjEnd)
+						timeEnd = tObjEnd;
+					String timeStr = channelsStr.substring(timeStart, timeEnd);
 					timeStr.trim();
 					long timeVal = timeStr.toInt();
 					timeVal = max(0L, min(86400L, timeVal));
 
 					int valueStart = valueIdx + 8;
-					int valueEnd = tObj.indexOf(',', valueStart);
-					if (valueEnd == -1)
-						valueEnd = tObj.indexOf('}', valueStart);
-					String valueStr = tObj.substring(valueStart, valueEnd);
+					int valueEnd = channelsStr.indexOf(',', valueStart);
+					if (valueEnd == -1 || valueEnd > tObjEnd)
+						valueEnd = tObjEnd;
+					String valueStr = channelsStr.substring(valueStart, valueEnd);
 					valueStr.trim();
 					int val = valueStr.toInt();
 					val = max(0, min(100, val));

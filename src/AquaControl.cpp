@@ -1275,38 +1275,48 @@ bool AquaControl::activateMacro(const String &macroId, uint32_t duration)
 			File macroFile = SD.open(sTempFilename);
 			if (macroFile)
 			{
+				// Use char buffer to avoid heap fragmentation (matches computeMacroDuration pattern)
+				char lineBuf[64];
 				while (macroFile.available())
 				{
-					String sLine = macroFile.readStringUntil(10);
-					if (sLine.length() > 0 && sLine.charAt(sLine.length() - 1) == 13)
+					int len = macroFile.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
+					if (len == 0)
+						continue;
+					lineBuf[len] = '\0';
+
+					// Strip CR if present
+					if (len > 0 && lineBuf[len - 1] == '\r')
 					{
-						sLine = sLine.substring(0, sLine.length() - 1);
+						lineBuf[len - 1] = '\0';
+						len--;
 					}
-					if (sLine.length() == 0 || sLine.startsWith("//"))
+
+					// Skip empty lines or comments
+					if (len == 0 || (lineBuf[0] == '/' && lineBuf[1] == '/'))
 						continue;
 
-					uint8_t semiIdx = sLine.indexOf(';');
-					if (semiIdx == -1)
+					// Find semicolon separator
+					char *semi = strchr(lineBuf, ';');
+					if (!semi)
 						continue;
 
-					String timeStr = sLine.substring(0, semiIdx);
-					String valueStr = sLine.substring(semiIdx + 1);
-
-					// Parse time (MM:SS or seconds)
-					int colonIdx = timeStr.indexOf(':');
+					// Parse time from start to semicolon
 					long timeVal = 0;
-					if (colonIdx != -1)
+					char *colon = strchr(lineBuf, ':');
+					if (colon && colon < semi)
 					{
-						int mins = timeStr.substring(0, colonIdx).toInt();
-						int secs = timeStr.substring(colonIdx + 1).toInt();
-						timeVal = (mins * 60) + secs;
+						// MM:SS format
+						*colon = '\0';
+						timeVal = atoi(lineBuf) * 60 + atoi(colon + 1);
 					}
 					else
 					{
-						timeVal = timeStr.toInt();
+						// Seconds format
+						timeVal = atoi(lineBuf);
 					}
 
-					int value = valueStr.toInt();
+					// Parse value after semicolon
+					int value = atoi(semi + 1);
 					value = max(0, min(100, value));
 
 					Target t;
