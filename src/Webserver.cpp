@@ -786,10 +786,16 @@ void handleApiMacroList()
 			uint32_t duration = computeMacroDuration(macroIdStr, macroName);
 
 			// Send JSON with id, name, and duration
-			char idBuf[128];
-			sprintf(idBuf, "{\"id\":\"%s\",\"name\":\"%s\",\"duration\":%lu}",
-					macroIdStr.c_str(), macroName.c_str(), (unsigned long)duration);
-			_Server.sendContent(idBuf);
+			// Use _Server.sendContent() to avoid buffer size concerns
+			_Server.sendContent("{\"id\":\"");
+			_Server.sendContent(macroIdStr);
+			_Server.sendContent("\",\"name\":\"");
+			_Server.sendContent(macroName);
+			_Server.sendContent("\",\"duration\":");
+			char durBuf[16];
+			sprintf(durBuf, "%lu", (unsigned long)duration);
+			_Server.sendContent(durBuf);
+			_Server.sendContent("}");
 		}
 	}
 
@@ -815,15 +821,14 @@ void handleApiMacroGet()
 	String macroName;
 	uint32_t duration = computeMacroDuration(macroId, macroName);
 
-	char buf[64];
-	sprintf(buf, "{\"id\":\"");
-	_Server.sendContent(buf);
+	_Server.sendContent("{\"id\":\"");
 	_Server.sendContent(macroId);
 	_Server.sendContent("\",\"name\":\"");
 	_Server.sendContent(macroName);
 	_Server.sendContent("\",\"duration\":");
-	sprintf(buf, "%lu", (unsigned long)duration);
-	_Server.sendContent(buf);
+	char durBuf[16];
+	sprintf(durBuf, "%lu", (unsigned long)duration);
+	_Server.sendContent(durBuf);
 	_Server.sendContent(",\"channels\":[");
 
 	for (uint8_t ch = 0; ch < 6; ch++)
@@ -1100,8 +1105,10 @@ void handleApiMacroSave()
 	String macroName;
 	uint32_t duration = computeMacroDuration(macroId, macroName);
 
-	char buf[128];
-	sprintf(buf, "{\"status\":\"ok\",\"id\":\"%s\",\"duration\":%lu}", macroId.c_str(), (unsigned long)duration);
+	// Build response safely (macroId is bounded to "macro_NNN" = 10 chars max)
+	char buf[64];
+	snprintf(buf, sizeof(buf), "{\"status\":\"ok\",\"id\":\"%s\",\"duration\":%lu}",
+			 macroId.c_str(), (unsigned long)duration);
 	_Server.send(200, "application/json", buf);
 }
 
