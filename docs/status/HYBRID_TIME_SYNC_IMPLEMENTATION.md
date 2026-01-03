@@ -36,7 +36,7 @@ class AquaControl
 Implemented NTP client functionality:
 - Added `getNtpTime()` function to query NTP servers
 - Added `sendNTPpacket()` helper for NTP protocol
-- Default NTP server: `time.google.com`
+- Default NTP server: `192.168.103.1` (router local NTP)
 - 2-second timeout for network requests (non-blocking)
 - Automatic RTC update when NTP succeeds
 
@@ -205,7 +205,7 @@ API Response (/api/status):
 ```
 Serial Output:
   Attempting NTP time sync...
-  Sending NTP request to time.google.com
+  Sending NTP request to 192.168.103.1
   NTP response received
    Success!
   NTP time: 14:30:45

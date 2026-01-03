@@ -488,8 +488,8 @@ bool AquaControl::writeLedConfig(uint8_t pwmChannel)
 }
 
 #if defined(USE_NTP)
-// NTP server defaults (time.google.com pool)
-const char* ntpServerName = "time.google.com";
+// NTP server defaults (router local NTP)
+const char* ntpServerName = "192.168.103.1";
 
 // Send an NTP request to the time server at the given address
 void sendNTPpacket(const char* address)

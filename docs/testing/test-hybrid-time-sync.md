@@ -78,7 +78,7 @@ Initializing RTC DS3231... Done.
 **Expected Serial Output**:
 ```
 Attempting NTP time sync...
-Sending NTP request to time.google.com
+Sending NTP request to 192.168.103.1
 NTP response received
  Success!
 NTP time: 14:30:45
@@ -123,7 +123,7 @@ Updating RTC with NTP time... Done.
 **Expected Serial Output**:
 ```
 Attempting NTP time sync...
-Sending NTP request to time.google.com
+Sending NTP request to 192.168.103.1
 NTP request timeout
  Failed.
 Initializing RTC DS3231... Done.
@@ -389,7 +389,7 @@ pio device monitor
 
 ### NTP Always Times Out
 - Check WiFi connection: `curl http://192.168.0.8/api/status` should show `"wifi_connected": true`
-- Verify internet access: ping `time.google.com` from your network
+- Verify router NTP is enabled: ping `192.168.103.1` from your network
 - Check firewall: UDP port 123 must be allowed
 
 ### RTC Sync Fails
@@ -408,7 +408,7 @@ pio device monitor
 
 - Replace `192.168.0.8` with your device's actual IP
 - All times are in 24-hour format
-- NTP uses `time.google.com` by default
+- NTP uses router at `192.168.103.1` by default (local network NTP)
 - Time sync happens once at boot, not continuously
 - RTC hardware persists time across power loss
 - Memory usage: ~200 bytes additional for state tracking and NTP buffers
