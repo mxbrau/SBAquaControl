@@ -1089,6 +1089,13 @@ bool AquaControl::activateMacro(const String &macroId, uint32_t duration)
 		return false;
 	}
 
+	// Guard against zero duration
+	if (duration == 0)
+	{
+		Serial.println(F("❌ Invalid macro duration: 0"));
+		return false;
+	}
+
 	// Backup current schedules to restore later
 	for (uint8_t ch = 0; ch < PWM_CHANNELS; ch++)
 	{
