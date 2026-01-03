@@ -831,6 +831,7 @@ void handleApiMacroGet()
 	_Server.sendContent(durBuf);
 	_Server.sendContent(",\"channels\":[");
 
+	char buf[48]; // Buffer for formatting JSON within the loop
 	for (uint8_t ch = 0; ch < 6; ch++)
 	{
 		if (ch > 0)
