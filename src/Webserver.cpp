@@ -17,6 +17,7 @@ extern "C" ESP8266WebServer _Server;
 extern "C" AquaControl *_aqc;
 #if defined(USE_RTC_DS3231)
 extern DS3232RTC RTC;
+extern time_t getRTCTime();
 #endif
 
 void handleRoot()
@@ -151,16 +152,48 @@ void handleApiStatus()
 	_Server.sendContent("{\"test_mode\":");
 	_Server.sendContent(_aqc->_PwmChannels[0].TestMode ? "true" : "false");
 
-	_Server.sendContent(",\"current_time\":\"");
-	sprintf(buf, "%02d:%02d:%02d", hour(), minute(), second());
-	_Server.sendContent(buf);
-
-	_Server.sendContent("\",\"time\":\"");
+	// Current time (HH:MM:SS format)
+	// NOTE: RTC stores local time (not UTC). Ensure RTC is set to your timezone.
+	_Server.sendContent(",\"time\":\"");
 	sprintf(buf, "%02d:%02d:%02d", hour(), minute(), second());
 	_Server.sendContent(buf);
 
 	_Server.sendContent("\",\"current_seconds\":");
 	sprintf(buf, "%lu", (unsigned long)_aqc->CurrentSecOfDay);
+	_Server.sendContent(buf);
+
+	// Add time sync status fields
+	_Server.sendContent(",\"time_source\":\"");
+	const char *source = "unknown";
+	if (_aqc->_LastTimeSyncSource == TimeSyncSource::Ntp)
+		source = "ntp";
+	else if (_aqc->_LastTimeSyncSource == TimeSyncSource::Rtc)
+		source = "rtc";
+	else if (_aqc->_LastTimeSyncSource == TimeSyncSource::Api)
+		source = "api";
+	_Server.sendContent(source);
+	_Server.sendContent("\"");
+
+#if defined(USE_RTC_DS3231)
+	_Server.sendContent(",\"rtc_present\":true");
+#else
+	_Server.sendContent(",\"rtc_present\":false");
+#endif
+
+	// Time is valid if we have a sync source other than Unknown
+	bool timeValid = (_aqc->_LastTimeSyncSource != TimeSyncSource::Unknown);
+	bool needsSync = false;
+#if defined(USE_NTP)
+	needsSync = _aqc->_NtpSyncFailed;
+#endif
+	_Server.sendContent(",\"time_valid\":");
+	_Server.sendContent(timeValid ? "true" : "false");
+	_Server.sendContent(",\"needs_time_sync\":");
+	_Server.sendContent(needsSync ? "true" : "false");
+
+	// Last sync timestamp (for diagnostics)
+	_Server.sendContent(",\"last_sync_ts\":");
+	sprintf(buf, "%lu", (unsigned long)_aqc->_LastTimeSync);
 	_Server.sendContent(buf);
 
 #if defined(USE_DS18B20_TEMP_SENSOR)
@@ -1208,7 +1241,7 @@ void handleApiDebug()
 
 // File upload handler - receives file chunks
 // Note: Global variables are safe here because ESP8266WebServer is single-threaded
-static File _uploadFile; // Persists across upload chunks
+static File _uploadFile;		// Persists across upload chunks
 static String _uploadPath = ""; // Stores target path from form data
 
 void handleUpload()
@@ -1374,6 +1407,95 @@ void handleUploadComplete()
 
 	// Reset upload state
 	_uploadPath = "";
+}
+
+// API: POST /api/time/set
+void handleApiTimeSet()
+{
+#if defined(USE_RTC_DS3231)
+	String body = _Server.arg("plain");
+	Serial.print(F("Time set request body: "));
+	Serial.println(body);
+
+	// Helper lambda: Parse JSON integer field
+	auto parseTimeField = [&body](const char *field) -> int
+	{
+		int idx = body.indexOf(field);
+		if (idx == -1)
+			return -1;
+		int start = idx + strlen(field) + 1;
+		int end = body.indexOf(',', start);
+		if (end == -1)
+			end = body.indexOf('}', start);
+		return body.substring(start, end).toInt();
+	};
+
+	// Parse time fields
+	int hour = parseTimeField("\"hour\":");
+	int minute = parseTimeField("\"minute\":");
+	int second = parseTimeField("\"second\":");
+
+	if (hour == -1 || minute == -1 || second == -1)
+	{
+		_Server.send(400, "application/json", "{\"error\":\"Missing or invalid time field (hour/minute/second)\"}");
+		return;
+	}
+
+	// Validate ranges
+	if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59)
+	{
+		_Server.send(400, "application/json", "{\"error\":\"Invalid time values (hour: 0-23, minute: 0-59, second: 0-59)\"}");
+		return;
+	}
+
+	// Create tmElements_t struct from input, preserving current date
+	tmElements_t tm;
+	tm.Hour = hour;
+	tm.Minute = minute;
+	tm.Second = second;
+	tm.Day = day(); // Preserve current date
+	tm.Month = month();
+	tm.Year = year() - 1970;
+
+	// Convert to time_t and write to RTC
+	time_t t = makeTime(tm);
+	RTC.set(t);
+
+	// Sync system time with RTC
+	setSyncProvider(getRTCTime);
+	if (timeStatus() != timeSet)
+	{
+		Serial.print(F("ERROR: RTC sync failed, timeStatus="));
+		Serial.println(timeStatus());
+		_Server.send(500, "application/json", "{\"error\":\"RTC sync failed - time not set\"}");
+		return;
+	}
+
+	// Update time sync tracking
+	_aqc->_LastTimeSync = now();
+	_aqc->_LastTimeSyncSource = TimeSyncSource::Api;
+	_aqc->_NtpSyncFailed = false; // Clear the flag since browser provided time
+
+	// Stream JSON response with updated time
+	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+	_Server.send(200, "application/json", "");
+
+	char buf[16];
+	_Server.sendContent("{\"status\":\"ok\",\"time\":\"");
+	sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
+	_Server.sendContent(buf);
+	_Server.sendContent("\"}");
+
+	Serial.print(F("✅ Time set to: "));
+	Serial.print(hour);
+	Serial.print(F(":"));
+	Serial.print(minute);
+	Serial.print(F(":"));
+	Serial.println(second);
+	Serial.println(F("Time sync source: API"));
+#else
+	_Server.send(501, "application/json", "{\"error\":\"RTC not available\"}");
+#endif
 }
 
 #endif

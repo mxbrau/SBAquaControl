@@ -597,6 +597,14 @@ curl http://192.168.0.1/api/status
 curl http://192.168.0.1/api/debug
 ```
 
+### Set Time (RTC)
+```
+curl -X POST http://192.168.0.1/api/time/set \
+  -H "Content-Type: application/json" \
+  -d '{"hour": 14, "minute": 30, "second": 0}'
+```
+See [Time-Setting API Tests](../testing/test-time-api.md) for complete test suite.
+
 ### Load All Schedules
 ```
 curl http://192.168.0.1/api/schedule/all

@@ -74,6 +74,7 @@ void handleApiMacroStop();
 void handleApiMacroDelete();
 void handleApiReboot();
 void handleApiDebug();
+void handleApiTimeSet();
 #endif
 
 #if defined(__AVR__)
@@ -253,6 +254,15 @@ public:
 
 #endif
 
+// Time sync source tracking for hybrid time sync implementation
+enum class TimeSyncSource
+{
+	Unknown, // Not yet synced or sync failed
+	Ntp,	 // Time synced from NTP server
+	Rtc,	 // Time synced from DS3231 RTC
+	Api		 // Time manually set via /api/time/set
+};
+
 class AquaControl
 {
 public:
@@ -295,6 +305,11 @@ public:
 	MacroState _activeMacro; // Current active macro state
 #endif
 
+	// Time sync state tracking
+	time_t _LastTimeSync;				// Timestamp of last successful sync
+	TimeSyncSource _LastTimeSyncSource; // Source of last successful sync
+	bool _NtpSyncFailed;				// True if last NTP attempt failed (signals browser to auto-sync)
+
 	AquaControl()
 	{
 		_IsFirstCycle = true;
@@ -304,6 +319,9 @@ public:
 		_activeMacro.duration = 0;
 		_activeMacro.macroId[0] = '\0';
 #endif
+		_LastTimeSync = 0;
+		_LastTimeSyncSource = TimeSyncSource::Unknown;
+		_NtpSyncFailed = false;
 	}
 
 	void init();
