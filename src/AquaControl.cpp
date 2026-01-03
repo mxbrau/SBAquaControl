@@ -22,6 +22,15 @@ unsigned int localPort = 2390;		// local port to listen for UDP packets
 const int NTP_PACKET_SIZE = 48;		// NTP time stamp is in the first 48 bytes of the message
 byte packetBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 WiFiUDP udp;
+
+// NTP server configuration - customize via #define NTP_SERVER before including this file
+// Default tries local router first, then falls back to public pool if needed
+#ifndef NTP_SERVER
+#define NTP_SERVER "192.168.103.1" // Local router NTP server
+#endif
+#ifndef NTP_FALLBACK_SERVER
+#define NTP_FALLBACK_SERVER "pool.ntp.org" // Public NTP pool fallback
+#endif
 #endif
 
 #if defined(USE_WEBSERVER)
@@ -30,6 +39,14 @@ ESP8266WebServer _Server(80);
 
 AquaControl *_aqc;
 uint8_t mac[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
+
+// Helper: Compact time printing for diagnostics
+static void printTime()
+{
+	char buf[9];
+	sprintf(buf, "%02d:%02d:%02d", hour(), minute(), second());
+	Serial.println(buf);
+}
 
 #if defined(ESP8266)
 void AquaControl::initESP8266NetworkConnection()
@@ -487,34 +504,169 @@ bool AquaControl::writeLedConfig(uint8_t pwmChannel)
 	return writeTargetsToFile("config/ledch_", pwmChannel, _PwmChannels[pwmChannel]);
 }
 
+#if defined(USE_NTP)
+// NTP server from configuration (see definitions above)
+const char *ntpServerName = NTP_SERVER;
+
+// Send an NTP request to the time server at the given address
+void sendNTPpacket(const char *address)
+{
+	// Set all bytes in the buffer to 0
+	memset(packetBuffer, 0, NTP_PACKET_SIZE);
+	// Initialize values needed to form NTP request
+	packetBuffer[0] = 0b11100011; // LI, Version, Mode
+	packetBuffer[1] = 0;		  // Stratum, or type of clock
+	packetBuffer[2] = 6;		  // Polling Interval
+	packetBuffer[3] = 0xEC;		  // Peer Clock Precision
+	// 8 bytes of zero for Root Delay & Root Dispersion
+	packetBuffer[12] = 49;
+	packetBuffer[13] = 0x4E;
+	packetBuffer[14] = 49;
+	packetBuffer[15] = 52;
+
+	// Send packet to NTP server
+	udp.beginPacket(address, 123); // NTP requests are to port 123
+	udp.write(packetBuffer, NTP_PACKET_SIZE);
+	udp.endPacket();
+}
+
+// Attempt to get time from NTP server
+// Returns 0 on failure, unix timestamp on success
+time_t getNtpTime()
+{
+	// Start UDP
+	udp.begin(localPort);
+
+	Serial.print(F("Sending NTP request to "));
+	Serial.println(ntpServerName);
+
+	sendNTPpacket(ntpServerName);
+
+	// Wait for response (timeout after 2 seconds)
+	uint32_t beginWait = millis();
+	while (millis() - beginWait < 2000)
+	{
+		int size = udp.parsePacket();
+		if (size >= NTP_PACKET_SIZE)
+		{
+			Serial.println(F("NTP response received"));
+			udp.read(packetBuffer, NTP_PACKET_SIZE);
+
+			// Extract timestamp (seconds since 1900)
+			unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+			unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+			unsigned long secsSince1900 = highWord << 16 | lowWord;
+
+			// Convert to Unix time (seconds since 1970)
+			// Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+			const unsigned long seventyYears = 2208988800UL;
+			time_t epoch = secsSince1900 - seventyYears;
+
+			udp.stop();
+			return epoch;
+		}
+		delay(10);
+	}
+
+	Serial.println(F("NTP request timeout"));
+	udp.stop();
+	return 0;
+}
+#endif
+
 void AquaControl::initTimeKeeper()
 {
-#if defined(USE_RTC_DS3231)
-	Serial.print(F("Initializing RTC DS3231..."));
-	long l = now();
-	do
-	{
-		Serial.print(".");
-		RTC.begin();
-		setSyncProvider(getRTCTime); // the function to get the time from the RTC
-		if (timeStatus() != timeSet)
-		{
-			delay(500);
-			l = now();
-		}
-	} while (timeStatus() != timeSet && l < 10);
+	bool timeSynced = false;
 
-	if (timeStatus() != timeSet)
+#if defined(USE_NTP)
+	// Try NTP sync first when USE_NTP is enabled
+	Serial.print(F("Attempting NTP time sync..."));
+	time_t ntpTime = getNtpTime();
+
+	if (ntpTime > 0)
 	{
-		Serial.println(F(" Failed: Unable to sync with the RTC"));
+		// NTP sync successful - apply timezone offset to convert UTC to local time
+		time_t localTime = ntpTime + (TIMEZONE_OFFSET_HOURS * 3600);
+		setTime(localTime);
+		_LastTimeSync = localTime;
+		_LastTimeSyncSource = TimeSyncSource::Ntp;
+		_NtpSyncFailed = false;
+		timeSynced = true;
+		Serial.print(F(" Success! NTP time (UTC+"));
+		Serial.print(TIMEZONE_OFFSET_HOURS);
+		Serial.print(F("): "));
+		printTime();
+
+#if defined(USE_RTC_DS3231)
+		// If RTC is available, update it with local time
+		Serial.print(F("Updating RTC with local time..."));
+		RTC.set(localTime);
+		Serial.println(F(" Done."));
+#endif
 	}
 	else
 	{
-		Serial.println(F(" Done."));
+		Serial.println(F(" Failed."));
+		_NtpSyncFailed = true; // Signal browser to auto-sync time
 	}
-#elif defined(USE_NTP)
-#error "Not yet implemented"
 #endif
+
+#if defined(USE_RTC_DS3231)
+	// If NTP failed or not enabled, try RTC sync
+	if (!timeSynced)
+	{
+		Serial.print(F("Initializing RTC DS3231..."));
+		long l = now();
+		do
+		{
+			Serial.print(".");
+			RTC.begin();
+			setSyncProvider(getRTCTime); // the function to get the time from the RTC
+			if (timeStatus() != timeSet)
+			{
+				delay(500);
+				l = now();
+			}
+		} while (timeStatus() != timeSet && l < 10);
+
+		if (timeStatus() != timeSet)
+		{
+			Serial.println(F(" Failed: Unable to sync with the RTC"));
+			_LastTimeSyncSource = TimeSyncSource::Unknown;
+		}
+		else
+		{
+			// Validate RTC time is reasonable (not default/uninitialized)
+			time_t rtcTime = now();
+			// Check if time is before Jan 1, 2023 (likely uninitialized RTC)
+			if (rtcTime < 1672531200UL)
+			{
+				char dateBuf[20];
+				sprintf(dateBuf, "%04d-%02d-%02d", year(), month(), day());
+				Serial.print(F(" Done, but RTC invalid (before 2023): "));
+				Serial.println(dateBuf);
+				_LastTimeSyncSource = TimeSyncSource::Unknown;
+#if defined(USE_NTP)
+				_NtpSyncFailed = true; // Signal browser to sync time
+#endif
+			}
+			else
+			{
+				Serial.print(F(" Done. RTC time: "));
+				printTime();
+				_LastTimeSync = rtcTime;
+				_LastTimeSyncSource = TimeSyncSource::Rtc;
+				timeSynced = true;
+			}
+		}
+	}
+#endif
+
+	// Final status report
+	if (!timeSynced)
+	{
+		Serial.println(F("WARNING: No time source available. Time sync via /api/time/set required."));
+	}
 }
 
 uint8_t AquaControl::getPhysicalChannelAddress(uint8_t channelNumber)

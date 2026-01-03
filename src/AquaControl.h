@@ -241,6 +241,15 @@ public:
 
 #endif
 
+// Time sync source tracking for hybrid time sync implementation
+enum class TimeSyncSource
+{
+	Unknown, // Not yet synced or sync failed
+	Ntp,	 // Time synced from NTP server
+	Rtc,	 // Time synced from DS3231 RTC
+	Api		 // Time manually set via /api/time/set
+};
+
 class AquaControl
 {
 public:
@@ -280,9 +289,17 @@ public:
 	WlanConfig _WlanConfig;
 #endif
 
+	// Time sync state tracking
+	time_t _LastTimeSync;				 // Timestamp of last successful sync
+	TimeSyncSource _LastTimeSyncSource;	 // Source of last successful sync
+	bool _NtpSyncFailed;				 // True if last NTP attempt failed (signals browser to auto-sync)
+
 	AquaControl()
 	{
 		_IsFirstCycle = true;
+		_LastTimeSync = 0;
+		_LastTimeSyncSource = TimeSyncSource::Unknown;
+		_NtpSyncFailed = false;
 	}
 
 	void init();
