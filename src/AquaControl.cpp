@@ -487,34 +487,151 @@ bool AquaControl::writeLedConfig(uint8_t pwmChannel)
 	return writeTargetsToFile("config/ledch_", pwmChannel, _PwmChannels[pwmChannel]);
 }
 
+#if defined(USE_NTP)
+// NTP server defaults (time.google.com pool)
+const char* ntpServerName = "time.google.com";
+
+// Send an NTP request to the time server at the given address
+void sendNTPpacket(const char* address)
+{
+	// Set all bytes in the buffer to 0
+	memset(packetBuffer, 0, NTP_PACKET_SIZE);
+	// Initialize values needed to form NTP request
+	packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+	packetBuffer[1] = 0;     // Stratum, or type of clock
+	packetBuffer[2] = 6;     // Polling Interval
+	packetBuffer[3] = 0xEC;  // Peer Clock Precision
+	// 8 bytes of zero for Root Delay & Root Dispersion
+	packetBuffer[12] = 49;
+	packetBuffer[13] = 0x4E;
+	packetBuffer[14] = 49;
+	packetBuffer[15] = 52;
+
+	// Send packet to NTP server
+	udp.beginPacket(address, 123); // NTP requests are to port 123
+	udp.write(packetBuffer, NTP_PACKET_SIZE);
+	udp.endPacket();
+}
+
+// Attempt to get time from NTP server
+// Returns 0 on failure, unix timestamp on success
+time_t getNtpTime()
+{
+	// Start UDP
+	udp.begin(localPort);
+	
+	Serial.print(F("Sending NTP request to "));
+	Serial.println(ntpServerName);
+	
+	sendNTPpacket(ntpServerName);
+	
+	// Wait for response (timeout after 2 seconds)
+	uint32_t beginWait = millis();
+	while (millis() - beginWait < 2000)
+	{
+		int size = udp.parsePacket();
+		if (size >= NTP_PACKET_SIZE)
+		{
+			Serial.println(F("NTP response received"));
+			udp.read(packetBuffer, NTP_PACKET_SIZE);
+			
+			// Extract timestamp (seconds since 1900)
+			unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+			unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+			unsigned long secsSince1900 = highWord << 16 | lowWord;
+			
+			// Convert to Unix time (seconds since 1970)
+			// Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+			const unsigned long seventyYears = 2208988800UL;
+			time_t epoch = secsSince1900 - seventyYears;
+			
+			udp.stop();
+			return epoch;
+		}
+		delay(10);
+	}
+	
+	Serial.println(F("NTP request timeout"));
+	udp.stop();
+	return 0;
+}
+#endif
+
 void AquaControl::initTimeKeeper()
 {
+	bool timeSynced = false;
+	
+#if defined(USE_NTP)
+	// Try NTP sync first when USE_NTP is enabled
+	Serial.print(F("Attempting NTP time sync..."));
+	time_t ntpTime = getNtpTime();
+	
+	if (ntpTime > 0)
+	{
+		// NTP sync successful
+		setTime(ntpTime);
+		_LastTimeSync = ntpTime;
+		_LastTimeSyncSource = TimeSyncSource::Ntp;
+		timeSynced = true;
+		Serial.println(F(" Success!"));
+		Serial.print(F("NTP time: "));
+		Serial.print(hour());
+		Serial.print(F(":"));
+		Serial.print(minute());
+		Serial.print(F(":"));
+		Serial.println(second());
+		
 #if defined(USE_RTC_DS3231)
-	Serial.print(F("Initializing RTC DS3231..."));
-	long l = now();
-	do
-	{
-		Serial.print(".");
-		RTC.begin();
-		setSyncProvider(getRTCTime); // the function to get the time from the RTC
-		if (timeStatus() != timeSet)
-		{
-			delay(500);
-			l = now();
-		}
-	} while (timeStatus() != timeSet && l < 10);
-
-	if (timeStatus() != timeSet)
-	{
-		Serial.println(F(" Failed: Unable to sync with the RTC"));
+		// If RTC is available, update it with NTP time
+		Serial.print(F("Updating RTC with NTP time..."));
+		RTC.set(ntpTime);
+		Serial.println(F(" Done."));
+#endif
 	}
 	else
 	{
-		Serial.println(F(" Done."));
+		Serial.println(F(" Failed."));
 	}
-#elif defined(USE_NTP)
-#error "Not yet implemented"
 #endif
+
+#if defined(USE_RTC_DS3231)
+	// If NTP failed or not enabled, try RTC sync
+	if (!timeSynced)
+	{
+		Serial.print(F("Initializing RTC DS3231..."));
+		long l = now();
+		do
+		{
+			Serial.print(".");
+			RTC.begin();
+			setSyncProvider(getRTCTime); // the function to get the time from the RTC
+			if (timeStatus() != timeSet)
+			{
+				delay(500);
+				l = now();
+			}
+		} while (timeStatus() != timeSet && l < 10);
+
+		if (timeStatus() != timeSet)
+		{
+			Serial.println(F(" Failed: Unable to sync with the RTC"));
+			_LastTimeSyncSource = TimeSyncSource::Unknown;
+		}
+		else
+		{
+			Serial.println(F(" Done."));
+			_LastTimeSync = now();
+			_LastTimeSyncSource = TimeSyncSource::Rtc;
+			timeSynced = true;
+		}
+	}
+#endif
+
+	// Final status report
+	if (!timeSynced)
+	{
+		Serial.println(F("WARNING: No time source available. Time sync via /api/time/set required."));
+	}
 }
 
 uint8_t AquaControl::getPhysicalChannelAddress(uint8_t channelNumber)

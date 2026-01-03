@@ -164,6 +164,40 @@ void handleApiStatus()
 	sprintf(buf, "%lu", (unsigned long)_aqc->CurrentSecOfDay);
 	_Server.sendContent(buf);
 
+	// Add time sync status fields
+	_Server.sendContent(",\"time_source\":\"");
+	switch (_aqc->_LastTimeSyncSource)
+	{
+		case TimeSyncSource::Ntp:
+			_Server.sendContent("ntp");
+			break;
+		case TimeSyncSource::Rtc:
+			_Server.sendContent("rtc");
+			break;
+		case TimeSyncSource::Api:
+			_Server.sendContent("api");
+			break;
+		default:
+			_Server.sendContent("unknown");
+			break;
+	}
+	_Server.sendContent("\"");
+
+#if defined(USE_RTC_DS3231)
+	_Server.sendContent(",\"rtc_present\":true");
+#else
+	_Server.sendContent(",\"rtc_present\":false");
+#endif
+
+	// Time is valid if we have a sync source other than Unknown
+	_Server.sendContent(",\"time_valid\":");
+	_Server.sendContent(_aqc->_LastTimeSyncSource != TimeSyncSource::Unknown ? "true" : "false");
+
+	// Last sync timestamp (for diagnostics)
+	_Server.sendContent(",\"last_sync_ts\":");
+	sprintf(buf, "%lu", (unsigned long)_aqc->_LastTimeSync);
+	_Server.sendContent(buf);
+
 #if defined(USE_DS18B20_TEMP_SENSOR)
 	_Server.sendContent(",\"temperature\":");
 	dtostrf(_aqc->_Temperature._TemperatureInCelsius, 1, 1, buf);
@@ -1406,6 +1440,10 @@ void handleApiTimeSet()
 		return;
 	}
 
+	// Update time sync tracking
+	_aqc->_LastTimeSync = now();
+	_aqc->_LastTimeSyncSource = TimeSyncSource::Api;
+
 	// Stream JSON response with updated time
 	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
 	_Server.send(200, "application/json", "");
@@ -1422,6 +1460,7 @@ void handleApiTimeSet()
 	Serial.print(minute);
 	Serial.print(F(":"));
 	Serial.println(second);
+	Serial.println(F("Time sync source: API"));
 #else
 	_Server.send(501, "application/json", "{\"error\":\"RTC not available\"}");
 #endif
