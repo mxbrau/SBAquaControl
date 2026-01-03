@@ -292,12 +292,14 @@ public:
 	// Time sync state tracking
 	time_t _LastTimeSync;				 // Timestamp of last successful sync
 	TimeSyncSource _LastTimeSyncSource;	 // Source of last successful sync
+	bool _NtpSyncFailed;				 // True if last NTP attempt failed (signals browser to auto-sync)
 
 	AquaControl()
 	{
 		_IsFirstCycle = true;
 		_LastTimeSync = 0;
 		_LastTimeSyncSource = TimeSyncSource::Unknown;
+		_NtpSyncFailed = false;
 	}
 
 	void init();

@@ -193,6 +193,14 @@ void handleApiStatus()
 	_Server.sendContent(",\"time_valid\":");
 	_Server.sendContent(_aqc->_LastTimeSyncSource != TimeSyncSource::Unknown ? "true" : "false");
 
+	// Signal browser to auto-sync time when NTP failed
+	_Server.sendContent(",\"needs_time_sync\":");
+#if defined(USE_NTP)
+	_Server.sendContent(_aqc->_NtpSyncFailed ? "true" : "false");
+#else
+	_Server.sendContent("false");
+#endif
+
 	// Last sync timestamp (for diagnostics)
 	_Server.sendContent(",\"last_sync_ts\":");
 	sprintf(buf, "%lu", (unsigned long)_aqc->_LastTimeSync);
@@ -1443,6 +1451,7 @@ void handleApiTimeSet()
 	// Update time sync tracking
 	_aqc->_LastTimeSync = now();
 	_aqc->_LastTimeSyncSource = TimeSyncSource::Api;
+	_aqc->_NtpSyncFailed = false;  // Clear the flag since browser provided time
 
 	// Stream JSON response with updated time
 	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);

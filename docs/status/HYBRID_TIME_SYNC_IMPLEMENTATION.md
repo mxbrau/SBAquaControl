@@ -67,6 +67,7 @@ Extended `/api/status` endpoint with new fields:
   "time_source": "ntp|rtc|api|unknown",
   "rtc_present": true|false,
   "time_valid": true|false,
+  "needs_time_sync": true|false,
   "last_sync_ts": 1735862400
 }
 ```
@@ -75,11 +76,29 @@ Enables UI to:
 - Display current sync source
 - Detect when time sync is needed
 - Show RTC availability status
+- **Trigger automatic browser time sync when NTP fails**
 
-### 6. Comprehensive Test Plan
+### 6. Browser Auto-Sync Feature
+**Files**: `src/AquaControl.h`, `src/AquaControl.cpp`, `src/Webserver.cpp`
+
+Implemented automatic browser fallback when NTP fails:
+- Added `_NtpSyncFailed` flag to track NTP failure state
+- Set flag to `true` when NTP times out during boot
+- Expose flag via `/api/status` as `needs_time_sync` field
+- Browser can poll this flag and automatically POST time to `/api/time/set`
+- Flag cleared when browser successfully syncs time
+
+**Workflow**:
+1. NTP sync fails → `_NtpSyncFailed = true`
+2. Browser polls `/api/status` → sees `needs_time_sync: true`
+3. Browser auto-POSTs current time to `/api/time/set`
+4. Device updates time → `_NtpSyncFailed = false`
+5. No user intervention required!
+
+### 7. Comprehensive Test Plan
 **File**: `docs/testing/test-hybrid-time-sync.md`
 
-Created manual test plan with 8 core test scenarios:
+Created manual test plan with 9 core test scenarios:
 1. RTC sync on boot (default)
 2. NTP sync on boot (USE_NTP enabled)
 3. NTP failure fallback to RTC
@@ -88,6 +107,7 @@ Created manual test plan with 8 core test scenarios:
 6. Time persistence across reboot
 7. NTP updates RTC
 8. Status fields format validation
+9. **Browser auto-sync when NTP fails**
 
 ---
 

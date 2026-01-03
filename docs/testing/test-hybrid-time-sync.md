@@ -306,6 +306,72 @@ Time sync source: API
 - [ ] `rtc_present` is a boolean
 - [ ] `time_valid` is a boolean
 - [ ] `last_sync_ts` is a number >= 0
+- [ ] `needs_time_sync` is a boolean
+
+---
+
+### Test 9: Browser Auto-Sync When NTP Fails
+**Description**: Verify that browser automatically syncs time when NTP fails.
+
+**Configuration**:
+- `USE_NTP` defined
+- `USE_RTC_DS3231` defined (optional)
+- Router NTP disabled or invalid NTP server
+
+**Steps**:
+1. Ensure router NTP is disabled or NTP server is unreachable
+2. Flash and boot device
+3. Monitor serial output
+4. Call `/api/status` and verify `needs_time_sync: true`
+5. Implement browser auto-sync JavaScript (see `docs/status/BROWSER_AUTO_SYNC.md`)
+6. Open web UI in browser
+7. Wait 10 seconds
+8. Call `/api/status` again
+
+**Expected Serial Output**:
+```
+Attempting NTP time sync...
+Sending NTP request to 192.168.103.1
+NTP request timeout
+ Failed.
+Initializing RTC DS3231... Done.
+```
+(Then after browser sync):
+```
+Time set request body: {"hour":14,"minute":30,"second":45}
+✅ Time set to: 14:30:45
+Time sync source: API
+```
+
+**Expected API Response (before browser sync)**:
+```json
+{
+  "time_source": "rtc",
+  "rtc_present": true,
+  "time_valid": true,
+  "needs_time_sync": true,
+  "last_sync_ts": 1735862400
+}
+```
+
+**Expected API Response (after browser sync)**:
+```json
+{
+  "time_source": "api",
+  "rtc_present": true,
+  "time_valid": true,
+  "needs_time_sync": false,
+  "last_sync_ts": 1735862445
+}
+```
+
+**Validation**:
+- [ ] NTP sync fails and sets `needs_time_sync: true`
+- [ ] Browser detects the flag
+- [ ] Browser automatically POSTs time to `/api/time/set`
+- [ ] `needs_time_sync` changes to `false` after sync
+- [ ] `time_source` changes to `"api"`
+- [ ] No user intervention required
 
 ---
 
@@ -320,6 +386,7 @@ Time sync source: API
 - [ ] Test 6: Time Sync Persistence Across Reboot
 - [ ] Test 7: NTP Updates RTC
 - [ ] Test 8: Status Fields Format Validation
+- [ ] Test 9: Browser Auto-Sync When NTP Fails
 
 ### Edge Cases
 - [ ] WiFi disconnect during NTP sync

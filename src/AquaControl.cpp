@@ -572,6 +572,7 @@ void AquaControl::initTimeKeeper()
 		setTime(ntpTime);
 		_LastTimeSync = ntpTime;
 		_LastTimeSyncSource = TimeSyncSource::Ntp;
+		_NtpSyncFailed = false;
 		timeSynced = true;
 		Serial.println(F(" Success!"));
 		Serial.print(F("NTP time: "));
@@ -591,6 +592,7 @@ void AquaControl::initTimeKeeper()
 	else
 	{
 		Serial.println(F(" Failed."));
+		_NtpSyncFailed = true;  // Signal browser to auto-sync time
 	}
 #endif
 
