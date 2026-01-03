@@ -719,6 +719,71 @@ void handleApiTestExit()
 	_Server.send(200, "application/json", "{\"status\":\"ok\",\"test_mode\":false}");
 }
 
+// Helper: Compute macro duration and name from stored files
+// Returns duration in seconds (0 if no macro files found) and sets name via parameter
+uint32_t computeMacroDuration(const String &macroId, String &outName)
+{
+	uint32_t maxTime = 0;
+	bool foundAnyFile = false;
+
+	// Default name to macroId
+	outName = macroId;
+
+	// Scan all 16 channels to find max target time
+	for (uint8_t ch = 0; ch < PWM_CHANNELS; ch++)
+	{
+		char sTempFilename[50];
+		sprintf(sTempFilename, "macros/%s_ch%02d.cfg", macroId.c_str(), ch);
+
+		if (SD.exists(sTempFilename))
+		{
+			foundAnyFile = true;
+			File macroFile = SD.open(sTempFilename);
+			if (macroFile)
+			{
+				while (macroFile.available())
+				{
+					String sLine = macroFile.readStringUntil(10);
+					if (sLine.length() > 0 && sLine.charAt(sLine.length() - 1) == 13)
+					{
+						sLine = sLine.substring(0, sLine.length() - 1);
+					}
+					if (sLine.length() == 0 || sLine.startsWith("//"))
+						continue;
+
+					int semiIdx = sLine.indexOf(';');
+					if (semiIdx == -1)
+						continue;
+
+					String timeStr = sLine.substring(0, semiIdx);
+
+					// Parse time (MM:SS or seconds)
+					int colonIdx = timeStr.indexOf(':');
+					long timeVal = 0;
+					if (colonIdx != -1)
+					{
+						int mins = timeStr.substring(0, colonIdx).toInt();
+						int secs = timeStr.substring(colonIdx + 1).toInt();
+						timeVal = (mins * 60) + secs;
+					}
+					else
+					{
+						timeVal = timeStr.toInt();
+					}
+
+					if ((uint32_t)timeVal > maxTime)
+					{
+						maxTime = (uint32_t)timeVal;
+					}
+				}
+				macroFile.close();
+			}
+		}
+	}
+
+	return foundAnyFile ? maxTime : 0;
+}
+
 // API: GET /api/macro/list
 void handleApiMacroList()
 {
@@ -747,10 +812,23 @@ void handleApiMacroList()
 			firstMacro = false;
 
 			// Build macro ID (e.g., "macro_001")
-			char idBuf[64];
 			String macroIdStr = sMacroPath.substring(7, sMacroPath.indexOf("_ch"));
-			sprintf(idBuf, "{\"id\":\"%s\",\"name\":\"%s\"}", macroIdStr.c_str(), macroIdStr.c_str());
-			_Server.sendContent(idBuf);
+
+			// Compute duration and get name
+			String macroName;
+			uint32_t duration = computeMacroDuration(macroIdStr, macroName);
+
+			// Send JSON with id, name, and duration
+			// Use _Server.sendContent() to avoid buffer size concerns
+			_Server.sendContent("{\"id\":\"");
+			_Server.sendContent(macroIdStr);
+			_Server.sendContent("\",\"name\":\"");
+			_Server.sendContent(macroName);
+			_Server.sendContent("\",\"duration\":");
+			char durBuf[16];
+			sprintf(durBuf, "%lu", (unsigned long)duration);
+			_Server.sendContent(durBuf);
+			_Server.sendContent("}");
 		}
 	}
 
@@ -772,12 +850,21 @@ void handleApiMacroGet()
 	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
 	_Server.send(200, "application/json", "");
 
-	char buf[48];
-	sprintf(buf, "{\"id\":\"");
-	_Server.sendContent(buf);
-	_Server.sendContent(macroId);
-	_Server.sendContent("\",\"channels\":[");
+	// Compute duration and name
+	String macroName;
+	uint32_t duration = computeMacroDuration(macroId, macroName);
 
+	_Server.sendContent("{\"id\":\"");
+	_Server.sendContent(macroId);
+	_Server.sendContent("\",\"name\":\"");
+	_Server.sendContent(macroName);
+	_Server.sendContent("\",\"duration\":");
+	char durBuf[16];
+	sprintf(durBuf, "%lu", (unsigned long)duration);
+	_Server.sendContent(durBuf);
+	_Server.sendContent(",\"channels\":[");
+
+	char buf[48]; // Buffer for formatting JSON within the loop
 	for (uint8_t ch = 0; ch < 6; ch++)
 	{
 		if (ch > 0)
@@ -1048,8 +1135,14 @@ void handleApiMacroSave()
 	Serial.print(F("✅ Macro saved: "));
 	Serial.println(macroId);
 
+	// Compute duration from saved files
+	String macroName;
+	uint32_t duration = computeMacroDuration(macroId, macroName);
+
+	// Build response safely (macroId is bounded to "macro_NNN" = 10 chars max)
 	char buf[64];
-	sprintf(buf, "{\"status\":\"ok\",\"id\":\"%s\"}", macroId.c_str());
+	snprintf(buf, sizeof(buf), "{\"status\":\"ok\",\"id\":\"%s\",\"duration\":%lu}",
+			 macroId.c_str(), (unsigned long)duration);
 	_Server.send(200, "application/json", buf);
 }
 
@@ -1087,6 +1180,19 @@ void handleApiMacroActivate()
 		String durStr = body.substring(durStart, durEnd);
 		durStr.trim();
 		duration = durStr.toInt();
+	}
+
+	// If duration is zero or missing, compute from macro files
+	if (duration == 0)
+	{
+		String macroName;
+		duration = computeMacroDuration(macroId, macroName);
+		if (duration == 0)
+		{
+			_Server.send(400, "application/json", "{\"error\":\"Invalid duration\"}");
+			Serial.println(F("❌ Macro activation failed: duration is 0"));
+			return;
+		}
 	}
 
 	// Activate macro
