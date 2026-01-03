@@ -152,11 +152,9 @@ void handleApiStatus()
 	_Server.sendContent("{\"test_mode\":");
 	_Server.sendContent(_aqc->_PwmChannels[0].TestMode ? "true" : "false");
 
-	_Server.sendContent(",\"current_time\":\"");
-	sprintf(buf, "%02d:%02d:%02d", hour(), minute(), second());
-	_Server.sendContent(buf);
-
-	_Server.sendContent("\",\"time\":\"");
+	// Current time (HH:MM:SS format)
+	// NOTE: RTC stores local time (not UTC). Ensure RTC is set to your timezone.
+	_Server.sendContent(",\"time\":\"");
 	sprintf(buf, "%02d:%02d:%02d", hour(), minute(), second());
 	_Server.sendContent(buf);
 
@@ -166,21 +164,14 @@ void handleApiStatus()
 
 	// Add time sync status fields
 	_Server.sendContent(",\"time_source\":\"");
-	switch (_aqc->_LastTimeSyncSource)
-	{
-		case TimeSyncSource::Ntp:
-			_Server.sendContent("ntp");
-			break;
-		case TimeSyncSource::Rtc:
-			_Server.sendContent("rtc");
-			break;
-		case TimeSyncSource::Api:
-			_Server.sendContent("api");
-			break;
-		default:
-			_Server.sendContent("unknown");
-			break;
-	}
+	const char *source = "unknown";
+	if (_aqc->_LastTimeSyncSource == TimeSyncSource::Ntp)
+		source = "ntp";
+	else if (_aqc->_LastTimeSyncSource == TimeSyncSource::Rtc)
+		source = "rtc";
+	else if (_aqc->_LastTimeSyncSource == TimeSyncSource::Api)
+		source = "api";
+	_Server.sendContent(source);
 	_Server.sendContent("\"");
 
 #if defined(USE_RTC_DS3231)
@@ -190,16 +181,15 @@ void handleApiStatus()
 #endif
 
 	// Time is valid if we have a sync source other than Unknown
-	_Server.sendContent(",\"time_valid\":");
-	_Server.sendContent(_aqc->_LastTimeSyncSource != TimeSyncSource::Unknown ? "true" : "false");
-
-	// Signal browser to auto-sync time when NTP failed
-	_Server.sendContent(",\"needs_time_sync\":");
+	bool timeValid = (_aqc->_LastTimeSyncSource != TimeSyncSource::Unknown);
+	bool needsSync = false;
 #if defined(USE_NTP)
-	_Server.sendContent(_aqc->_NtpSyncFailed ? "true" : "false");
-#else
-	_Server.sendContent("false");
+	needsSync = _aqc->_NtpSyncFailed;
 #endif
+	_Server.sendContent(",\"time_valid\":");
+	_Server.sendContent(timeValid ? "true" : "false");
+	_Server.sendContent(",\"needs_time_sync\":");
+	_Server.sendContent(needsSync ? "true" : "false");
 
 	// Last sync timestamp (for diagnostics)
 	_Server.sendContent(",\"last_sync_ts\":");
@@ -1373,50 +1363,29 @@ void handleApiTimeSet()
 	Serial.print(F("Time set request body: "));
 	Serial.println(body);
 
-	// Parse hour
-	int hourIdx = body.indexOf("\"hour\":");
-	if (hourIdx == -1)
+	// Helper lambda: Parse JSON integer field
+	auto parseTimeField = [&body](const char *field) -> int
 	{
-		_Server.send(400, "application/json", "{\"error\":\"Missing hour\"}");
-		return;
-	}
-	int hourStart = hourIdx + 7;
-	int hourEnd = body.indexOf(',', hourStart);
-	if (hourEnd == -1)
-		hourEnd = body.indexOf('}', hourStart);
-	String hourStr = body.substring(hourStart, hourEnd);
-	hourStr.trim();
-	int hour = hourStr.toInt(); // Note: toInt() returns 0 for invalid input; validation below will catch issues
+		int idx = body.indexOf(field);
+		if (idx == -1)
+			return -1;
+		int start = idx + strlen(field) + 1;
+		int end = body.indexOf(',', start);
+		if (end == -1)
+			end = body.indexOf('}', start);
+		return body.substring(start, end).toInt();
+	};
 
-	// Parse minute
-	int minuteIdx = body.indexOf("\"minute\":");
-	if (minuteIdx == -1)
-	{
-		_Server.send(400, "application/json", "{\"error\":\"Missing minute\"}");
-		return;
-	}
-	int minuteStart = minuteIdx + 9;
-	int minuteEnd = body.indexOf(',', minuteStart);
-	if (minuteEnd == -1)
-		minuteEnd = body.indexOf('}', minuteStart);
-	String minuteStr = body.substring(minuteStart, minuteEnd);
-	minuteStr.trim();
-	int minute = minuteStr.toInt();
+	// Parse time fields
+	int hour = parseTimeField("\"hour\":");
+	int minute = parseTimeField("\"minute\":");
+	int second = parseTimeField("\"second\":");
 
-	// Parse second
-	int secondIdx = body.indexOf("\"second\":");
-	if (secondIdx == -1)
+	if (hour == -1 || minute == -1 || second == -1)
 	{
-		_Server.send(400, "application/json", "{\"error\":\"Missing second\"}");
+		_Server.send(400, "application/json", "{\"error\":\"Missing or invalid time field (hour/minute/second)\"}");
 		return;
 	}
-	int secondStart = secondIdx + 9;
-	int secondEnd = body.indexOf(',', secondStart);
-	if (secondEnd == -1)
-		secondEnd = body.indexOf('}', secondStart);
-	String secondStr = body.substring(secondStart, secondEnd);
-	secondStr.trim();
-	int second = secondStr.toInt();
 
 	// Validate ranges
 	if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59)
@@ -1451,7 +1420,7 @@ void handleApiTimeSet()
 	// Update time sync tracking
 	_aqc->_LastTimeSync = now();
 	_aqc->_LastTimeSyncSource = TimeSyncSource::Api;
-	_aqc->_NtpSyncFailed = false;  // Clear the flag since browser provided time
+	_aqc->_NtpSyncFailed = false; // Clear the flag since browser provided time
 
 	// Stream JSON response with updated time
 	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);

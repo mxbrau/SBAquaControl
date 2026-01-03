@@ -7,8 +7,12 @@
 
 /* Define here what type of time keeper you want to use. */
 #define USE_RTC_DS3231 // Synchronizes the time with a DS3231 RTC module. The standard i2c pins will be used
-// #define USE_NTP			  // Not yet implemented - Connects to an NTP Server to get synchronize the time. This is only available if ESP8266 or EthernetShield is installed
-
+#define USE_NTP        // Connects to an NTP Server to synchronize time (requires network access). Falls back to RTC if NTP fails.
+/* Timezone offset from UTC in hours (can be negative). NTP servers return UTC, this offset converts to local time.
+   Examples: +1 for CET (Central European Time), +2 for CEST (summer), -5 for EST, -8 for PST */
+#ifndef TIMEZONE_OFFSET_HOURS
+#define TIMEZONE_OFFSET_HOURS 1 // Default: CET (UTC+1)
+#endif
 /* Comment this out to not use the web interface functionality */
 #define USE_WEBSERVER
 
