@@ -111,5 +111,17 @@ const API = {
             method: 'POST',
             body: JSON.stringify({ id })
         });
+    },
+
+    // Channel Configuration
+    async getChannelConfig() {
+        return this.call(CONFIG.api.channelConfigGet);
+    },
+
+    async saveChannelConfig(channels) {
+        return this.call(CONFIG.api.channelConfigSave, {
+            method: 'POST',
+            body: JSON.stringify({ channels })
+        });
     }
 };

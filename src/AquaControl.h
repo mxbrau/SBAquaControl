@@ -75,6 +75,8 @@ void handleApiMacroDelete();
 void handleApiReboot();
 void handleApiDebug();
 void handleApiTimeSet();
+void handleApiChannelConfigGet();
+void handleApiChannelConfigSave();
 #endif
 
 #if defined(__AVR__)
