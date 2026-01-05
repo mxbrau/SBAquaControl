@@ -36,20 +36,24 @@ Default Password: sbaqc12345
 Hardware:
 ├─ ESP8266 (160 KB RAM, 50-55% used)
 ├─ PCA9685 PWM Controller (16 channels)
-├─ DS3231 RTC (optional)
+├─ DS3231 RTC (optional, time sync)
 ├─ DS18B20 Temperature (optional)
-└─ SD Card (config storage)
+└─ SD Card (config + macro storage)
 
 Firmware:
 ├─ 16 PWM channels × 32 targets max = 2.6 KB
 ├─ Linear interpolation (no smoothing)
 ├─ Streaming JSON API (no large String allocations)
+├─ Hybrid time sync (NTP → RTC → API)
+├─ Macro timer system with auto-restore
 └─ OTA update capable
 
 UI:
 ├─ Chart.js visualization (linear curves)
 ├─ Real-time schedule editor
+├─ Macro creation wizard
 ├─ Test mode for manual control
+├─ Time sync status display
 └─ JSON API integration
 ```
 
@@ -116,12 +120,28 @@ Documentation/
 
 ### Schedule Operations
 ```
-GET  /api/status                 → Device status
+GET  /api/status                 → Device status (time, temp, macro state)
 GET  /api/schedule/get?channel=N → Load single channel
 GET  /api/schedule/all           → Load all 6 channels
 POST /api/schedule/save          → Save schedule to SD
 POST /api/schedule/target/add    → Add single target
 POST /api/schedule/target/delete → Remove target
+```
+
+### Macro System
+```
+GET  /api/macro/list             → List all available macros
+GET  /api/macro/get?id=XXX       → Load macro details
+POST /api/macro/save             → Create/update macro
+POST /api/macro/activate         → Activate macro (with timer)
+POST /api/macro/stop             → Stop active macro
+POST /api/macro/delete           → Delete macro
+```
+
+### Time Synchronization
+```
+POST /api/time/set               → Set time manually (hour, minute, second)
+                                   Auto-fallback when NTP/RTC unavailable
 ```
 
 ### Test Mode
@@ -142,8 +162,27 @@ POST /api/reboot                 → Restart device
 # Get all schedules
 curl http://192.168.103.8/api/schedule/all
 
+# Get device status (includes time, temp, macro state)
+curl http://192.168.103.8/api/status
+
 # Get debug info
 curl http://192.168.103.8/api/debug
+
+# Set time manually (when NTP/RTC unavailable)
+curl -X POST http://192.168.103.8/api/time/set \
+  -H "Content-Type: application/json" \
+  -d '{"hour":14,"minute":30,"second":0}'
+
+# List all macros
+curl http://192.168.103.8/api/macro/list
+
+# Activate a macro (2-hour duration)
+curl -X POST http://192.168.103.8/api/macro/activate \
+  -H "Content-Type: application/json" \
+  -d '{"id":"macro_001","duration":7200}'
+
+# Stop active macro
+curl -X POST http://192.168.103.8/api/macro/stop
 
 # Start test mode
 curl -X POST http://192.168.103.8/api/test/start
@@ -157,6 +196,22 @@ curl -X POST http://192.168.103.8/api/schedule/target/add \
 ---
 
 ## 🐛 Common Issues & Fixes
+
+### Issue: Time is incorrect after boot
+**Fix**:
+1. Check if RTC battery is present and charged
+2. Enable NTP sync in `src/AquaControl_config.h` (define `USE_NTP`)
+3. Use browser time sync: UI auto-syncs when time is invalid
+4. Manually set time: `POST /api/time/set` with current time
+5. Check `/api/status` for `time_source` and `time_valid` fields
+
+### Issue: Macro doesn't activate
+**Fix**:
+1. Verify macro files exist on SD card: `macros/macro_NNN_chNN.cfg`
+2. Check duration is non-zero in activation request
+3. Verify no other macro is already active
+4. Monitor serial output for activation errors
+5. Check `/api/status` for `macro_active` field
 
 ### Issue: Chart shows no data
 **Fix**: 

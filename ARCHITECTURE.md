@@ -164,9 +164,27 @@ User sets target: 08:30 @ 100% brightness
 ```
 User creates "Movie Mode" macro (2-hour duration, all channels @ 0%)
   → Saved to: macros/macro_001_ch00.cfg → ch05.cfg
-  → User clicks "activate"
-  → (STUB: timer not yet implemented)
-  → When complete, should auto-restore previous schedule
+  → User clicks "activate" → POST /api/macro/activate
+  → Firmware loads macro schedule and tracks expiration time
+  → Channels switch to macro targets
+  → Timer counts down in _activeMacro.expiresAt
+  → proceedCycle() checks if macro expired
+  → When complete, auto-restores previous schedule
+  → User can manually stop via POST /api/macro/stop
+```
+
+### Time Synchronization
+```
+Boot sequence attempts time sync in priority order:
+  1. NTP sync (if USE_NTP defined, 2-second timeout)
+  2. RTC sync (DS3231 hardware clock)
+  3. Manual sync via /api/time/set (fallback)
+  
+Sync status tracked in _LastTimeSyncSource enum:
+  - TimeSyncSource::Ntp (successful NTP)
+  - TimeSyncSource::Rtc (RTC fallback)
+  - TimeSyncSource::Api (manual set)
+  - TimeSyncSource::Unknown (no sync yet)
 ```
 
 ---
@@ -248,8 +266,8 @@ Prevents corruption if power lost during write.
 ## Known Limitations & Future Work
 
 ### Current Limitations
-- Macro activation/stop endpoints are stubs (no timer implementation)
-- No manual time-setting API (RTC must be set via separate tool)
+- ✅ ~~Macro activation/stop endpoints are stubs~~ **FIXED**: Fully implemented with timer
+- ✅ ~~No manual time-setting API~~ **FIXED**: `/api/time/set` endpoint implemented
 - Only 6 of 16 channels managed by UI (system supports 16)
 - No timezone support (always UTC)
 - No authentication (assumes private network)
