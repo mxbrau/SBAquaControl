@@ -525,3 +525,53 @@ body {
         width: 95%;
     }
 }
+
+/* Channel Configuration Editor */
+.channel-config-editor {
+    padding: 20px;
+}
+
+.config-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.config-row label {
+    min-width: 80px;
+    font-weight: 600;
+}
+
+.config-row input[type="text"] {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 1rem;
+}
+
+.config-row input[type="color"] {
+    width: 60px;
+    height: 38px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.modal-actions {
+    padding: 20px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.btn-secondary {
+    background: var(--secondary-color);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}

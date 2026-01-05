@@ -42,6 +42,8 @@ const CONFIG = {
         macroSave: '/api/macro/save',
         macroActivate: '/api/macro/activate',
         macroStop: '/api/macro/stop',
-        macroDelete: '/api/macro/delete'
+        macroDelete: '/api/macro/delete',
+        channelConfigGet: '/api/config/channels',
+        channelConfigSave: '/api/config/channels'
     }
 };

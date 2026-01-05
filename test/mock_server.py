@@ -540,6 +540,58 @@ def status():
     return jsonify(status_data)
 
 
+# === Channel Configuration API ===
+
+
+@app.route("/api/config/channels")
+def get_channel_config():
+    """Get channel names and colors"""
+    config_file = os.path.join(SD_CONFIG_DIR, "channels.cfg")
+    
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return jsonify(data)
+        except Exception as e:
+            print(f"⚠ Could not load channel config: {e}")
+    
+    # Return defaults
+    return jsonify({
+        "channels": [
+            {"name": "Blau", "color": "#2196F3"},
+            {"name": "Weiß", "color": "#E0E0E0"},
+            {"name": "Rot", "color": "#F44336"},
+            {"name": "Grün", "color": "#4CAF50"},
+            {"name": "UV", "color": "#9C27B0"},
+            {"name": "Mondlicht", "color": "#FFD700"}
+        ]
+    })
+
+
+@app.route("/api/config/channels", methods=["POST"])
+def save_channel_config():
+    """Save channel names and colors"""
+    try:
+        data = request.get_json()
+        
+        if not data or "channels" not in data:
+            return jsonify({"error": "Invalid JSON: missing 'channels' field"}), 400
+        
+        ensure_sd_dir()
+        config_file = os.path.join(SD_CONFIG_DIR, "channels.cfg")
+        
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        
+        print(f"✓ Channel config saved to {config_file}")
+        return jsonify({"status": "ok"})
+        
+    except Exception as e:
+        print(f"✗ Failed to save channel config: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # === File Upload API ===
 
 

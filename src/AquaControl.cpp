@@ -811,6 +811,8 @@ void AquaControl::init()
 	_Server.on("/api/reboot", HTTP_POST, handleApiReboot);
 	_Server.on("/api/debug", HTTP_GET, handleApiDebug);
 	_Server.on("/api/time/set", HTTP_POST, handleApiTimeSet);
+	_Server.on("/api/config/channels", HTTP_GET, handleApiChannelConfigGet);
+	_Server.on("/api/config/channels", HTTP_POST, handleApiChannelConfigSave);
 
 	_Server.onNotFound(handleNotFound);
 	_Server.begin();

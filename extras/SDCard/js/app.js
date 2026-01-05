@@ -20,6 +20,9 @@ const sliderTimers = {};
 async function init() {
     console.log('🚀 Initializing Aquarium Control...');
 
+    // Load channel configuration first
+    await loadChannelConfig();
+
     // Initialize main chart
     mainChart = new ChartManager('scheduleChart');
     mainChart.init();
@@ -738,6 +741,96 @@ async function editMacro(macroId) {
     } catch (error) {
         console.error('❌ Failed to load macro:', error);
         alert('Fehler beim Laden des Makros: ' + error.message);
+    }
+}
+
+// Load channel configuration from API
+async function loadChannelConfig() {
+    try {
+        const data = await API.getChannelConfig();
+        if (data && data.channels && data.channels.length === 6) {
+            // Update CONFIG with loaded values
+            CONFIG.channelNames = data.channels.map(ch => ch.name);
+            CONFIG.channelColors = data.channels.map(ch => ch.color);
+            console.log('✅ Channel config loaded');
+        }
+    } catch (error) {
+        console.warn('⚠️ Failed to load channel config, using defaults:', error);
+        // Keep defaults from config.js
+    }
+}
+
+// Show channel configuration editor
+function showChannelConfigEditor() {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'channelConfigModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Kanal-Konfiguration</h2>
+                <button onclick="closeChannelConfigEditor()" class="btn-close">×</button>
+            </div>
+            <div class="channel-config-editor">
+                ${CONFIG.channelNames.map((name, i) => `
+                    <div class="config-row">
+                        <label>Kanal ${i + 1}:</label>
+                        <input type="text" id="channelName${i}" value="${name}" placeholder="Name">
+                        <input type="color" id="channelColor${i}" value="${CONFIG.channelColors[i]}">
+                    </div>
+                `).join('')}
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeChannelConfigEditor()" class="btn">Abbrechen</button>
+                <button onclick="saveChannelConfig()" class="btn btn-success">💾 Speichern</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+// Close channel config editor
+function closeChannelConfigEditor() {
+    const modal = document.getElementById('channelConfigModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+// Save channel configuration
+async function saveChannelConfig() {
+    const channels = [];
+    for (let i = 0; i < 6; i++) {
+        const nameInput = document.getElementById(`channelName${i}`);
+        const colorInput = document.getElementById(`channelColor${i}`);
+        if (nameInput && colorInput) {
+            channels.push({
+                name: nameInput.value.trim() || `Kanal ${i + 1}`,
+                color: colorInput.value
+            });
+        }
+    }
+
+    try {
+        await API.saveChannelConfig(channels);
+        
+        // Update CONFIG
+        CONFIG.channelNames = channels.map(ch => ch.name);
+        CONFIG.channelColors = channels.map(ch => ch.color);
+        
+        // Refresh UI
+        createChannelControls();
+        if (mainChart) {
+            mainChart.init(); // Reinitialize chart with new colors
+            await loadSchedules(); // Reload schedules to update chart
+        }
+        
+        closeChannelConfigEditor();
+        alert('Kanal-Konfiguration erfolgreich gespeichert!');
+        console.log('✅ Channel config saved');
+    } catch (error) {
+        console.error('❌ Failed to save channel config:', error);
+        alert('Fehler beim Speichern der Konfiguration: ' + error.message);
     }
 }
 

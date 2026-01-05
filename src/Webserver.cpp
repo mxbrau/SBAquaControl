@@ -1584,4 +1584,109 @@ void handleApiTimeSet()
 #endif
 }
 
+// API: GET /api/config/channels - Returns channel names and colors
+void handleApiChannelConfigGet()
+{
+	Serial.println(F("Channel config GET"));
+
+	// Try to read config from SD card
+	File configFile = SD.open(F("config/channels.cfg"), FILE_READ);
+
+	if (!configFile)
+	{
+		// File doesn't exist, return defaults
+		Serial.println(F("channels.cfg not found, returning defaults"));
+		_Server.send(200, "application/json",
+					 "{\"channels\":["
+					 "{\"name\":\"Blau\",\"color\":\"#2196F3\"},"
+					 "{\"name\":\"Weiß\",\"color\":\"#E0E0E0\"},"
+					 "{\"name\":\"Rot\",\"color\":\"#F44336\"},"
+					 "{\"name\":\"Grün\",\"color\":\"#4CAF50\"},"
+					 "{\"name\":\"UV\",\"color\":\"#9C27B0\"},"
+					 "{\"name\":\"Mondlicht\",\"color\":\"#FFD700\"}"
+					 "]}");
+		return;
+	}
+
+	// Read config file and stream to client
+	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+	_Server.send(200, "application/json", "");
+
+	while (configFile.available())
+	{
+		String line = configFile.readStringUntil('\n');
+		_Server.sendContent(line);
+	}
+
+	configFile.close();
+	Serial.println(F("Channel config sent"));
+}
+
+// API: POST /api/config/channels - Saves channel names and colors
+void handleApiChannelConfigSave()
+{
+	Serial.println(F("Channel config SAVE"));
+
+	String body = _Server.arg("plain");
+	Serial.print(F("Body length: "));
+	Serial.println(body.length());
+
+	// Validate JSON structure (basic check)
+	if (body.indexOf("\"channels\"") == -1)
+	{
+		_Server.send(400, "application/json", "{\"error\":\"Invalid JSON: missing 'channels' field\"}");
+		return;
+	}
+
+	// Write to temporary file first
+	if (SD.exists(F("config/channels_new.cfg")))
+	{
+		SD.remove(F("config/channels_new.cfg"));
+	}
+
+	File newFile = SD.open(F("config/channels_new.cfg"), FILE_WRITE);
+	if (!newFile)
+	{
+		Serial.println(F("ERROR: Failed to open config/channels_new.cfg for writing"));
+		_Server.send(500, "application/json", "{\"error\":\"Failed to open temp file\"}");
+		return;
+	}
+
+	newFile.print(body);
+	newFile.close();
+
+	// Atomic replace: delete old, rename new
+	if (SD.exists(F("config/channels.cfg")))
+	{
+		SD.remove(F("config/channels.cfg"));
+	}
+
+	// Rename is not supported on SD library, so we need to copy and delete
+	File source = SD.open(F("config/channels_new.cfg"), FILE_READ);
+	File dest = SD.open(F("config/channels.cfg"), FILE_WRITE);
+
+	if (!source || !dest)
+	{
+		Serial.println(F("ERROR: Failed to copy temp file to final location"));
+		if (source)
+			source.close();
+		if (dest)
+			dest.close();
+		_Server.send(500, "application/json", "{\"error\":\"Failed to finalize config file\"}");
+		return;
+	}
+
+	while (source.available())
+	{
+		dest.write(source.read());
+	}
+
+	source.close();
+	dest.close();
+	SD.remove(F("config/channels_new.cfg"));
+
+	Serial.println(F("✅ Channel config saved"));
+	_Server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 #endif
