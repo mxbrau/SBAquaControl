@@ -308,8 +308,8 @@ All requirements from the original plan met:
 src/AquaControl.h                         # State tracking
 src/AquaControl.cpp                       # NTP + boot sync
 src/Webserver.cpp                         # API updates
-docs/status/time-sync-plan.md            # Updated plan status
-docs/testing/test-hybrid-time-sync.md    # New test plan
+.github/archives/time-sync-plan.md       # Archived plan (completed)
+docs/testing/test-hybrid-time-sync.md    # Test plan (reference)
 ```
 
 All changes follow project conventions:
