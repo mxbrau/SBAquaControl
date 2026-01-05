@@ -71,10 +71,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions and devel
 
 ## 📚 Documentation
 
+**Quick Navigation**: See [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) for a complete guide to all documentation.
+
+### Core Documentation
 - **[PRODUCT.md](PRODUCT.md)** - Feature overview and user workflows
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development guidelines and build process
-- **[docs/reference/QUICK_REFERENCE.md](docs/reference/QUICK_REFERENCE.md)** - Command cheat sheet and quick lookup
+
+### Reference & Status
+- **[docs/reference/QUICK_REFERENCE.md](docs/reference/QUICK_REFERENCE.md)** - Command cheat sheet and API reference
 - **[docs/status/FIRMWARE_STATUS.md](docs/status/FIRMWARE_STATUS.md)** - Current implementation status
 - **[docs/status/ROADMAP.md](docs/status/ROADMAP.md)** - Future development plans
 - **[docs/status/TESTING_GUIDE.md](docs/status/TESTING_GUIDE.md)** - Comprehensive test suite
