@@ -200,9 +200,24 @@ async function loadMacros() {
         const data = await API.getMacros();
 
         if (data.macros) {
-            state.macros = data.macros;
+            // Load full details for each macro to get duration
+            state.macros = await Promise.all(data.macros.map(async (macro) => {
+                try {
+                    const details = await API.getMacro(macro.id);
+                    // Calculate duration from first channel's last target time
+                    let duration = 3600; // Default 1 hour
+                    if (details.channels && details.channels[0] && details.channels[0].targets.length > 0) {
+                        const targets = details.channels[0].targets;
+                        duration = targets[targets.length - 1].time;
+                    }
+                    return { ...macro, duration };
+                } catch (err) {
+                    console.warn(`⚠️ Could not load duration for ${macro.id}:`, err);
+                    return { ...macro, duration: 3600 }; // Fallback to 1 hour
+                }
+            }));
             renderMacroList();
-            console.log(`✅ ${data.macros.length} macros loaded`);
+            console.log(`✅ ${state.macros.length} macros loaded`);
         }
     } catch (error) {
         console.error('❌ Failed to load macros:', error);
@@ -251,8 +266,14 @@ async function activateMacro(macroId) {
     }
 
     try {
-        await API.activateMacro(macroId);
-        console.log(`✅ Macro activated: ${macroId}`);
+        // Find macro duration from loaded macros
+        const macro = state.macros.find(m => m.id === macroId);
+        if (!macro || !macro.duration) {
+            throw new Error('Makro-Dauer nicht gefunden');
+        }
+
+        await API.activateMacro(macroId, macro.duration);
+        console.log(`✅ Macro activated: ${macroId} for ${macro.duration}s`);
     } catch (error) {
         console.error('❌ Macro activation failed:', error);
         alert('Fehler beim Aktivieren des Makros: ' + error.message);
@@ -482,17 +503,17 @@ async function updateStatus() {
             state.macroActive = data.macro_active;
 
             if (data.macro_active) {
-                state.activeMacro = data.macro_name;
-                document.getElementById('macroName').textContent = data.macro_name;
+                state.activeMacro = data.macro_id || 'Unknown';
+                document.getElementById('macroName').textContent = data.macro_id || 'Macro';
                 document.getElementById('macroBanner').classList.remove('hidden');
             } else {
                 document.getElementById('macroBanner').classList.add('hidden');
             }
         }
 
-        // Update macro timer (use macro_remaining from server)
-        if (state.macroActive && data.macro_remaining !== undefined) {
-            const remaining = data.macro_remaining;
+        // Update macro timer (use macro_expires_in from server)
+        if (state.macroActive && data.macro_expires_in !== undefined) {
+            const remaining = data.macro_expires_in;
 
             if (remaining > 0) {
                 const mins = Math.floor(remaining / 60);
@@ -535,6 +556,12 @@ function showMacroWizard() {
 
 function closeMacroWizard() {
     document.getElementById('macroWizard').classList.add('hidden');
+
+    // Reset wizard state
+    wizardMode = 'create';
+    wizardMacroId = null;
+    wizardMacroName = null;
+    wizardDurationSeconds = 0;
 
     // Cleanup macro chart
     if (macroChart) {
@@ -612,6 +639,8 @@ async function saveMacro() {
         }))
     }));
 
+    console.log('💾 MACRO SAVE - Channels being sent:', JSON.stringify(channels, null, 2));
+
     try {
         await API.saveMacro(macroId, name, duration, channels);
         console.log(`✅ Macro saved: ${name}`);
@@ -687,6 +716,8 @@ async function editMacro(macroId) {
     try {
         const data = await API.getMacro(macroId);
 
+        console.log('📝 Loading macro for edit:', data);
+
         // Populate form
         document.getElementById('wizardMacroNameInput').value = data.name || macroId;
         const hours = Math.floor(data.duration / 3600);
@@ -710,7 +741,9 @@ async function editMacro(macroId) {
         macroChart.init();
 
         // Load existing schedule
+        console.log('📊 Loading channels into chart:', data.channels.length);
         data.channels.forEach(ch => {
+            console.log(`  Channel ${ch.channel}: ${ch.targets.length} targets`, ch.targets);
             macroChart.updateChannel(ch.channel, ch.targets);
         });
 

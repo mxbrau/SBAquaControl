@@ -876,6 +876,14 @@ void AquaControl::proceedCycle()
 	yield(); // Prevent watchdog reset
 #endif
 
+	// Check macro expiration (non-blocking timer)
+#if defined(USE_WEBSERVER)
+	if (_activeMacro.active && getMacroTimeRemaining() == 0)
+	{
+		restoreSchedule();
+	}
+#endif
+
 	for (cycle = 0; cycle < PWM_CHANNELS; cycle++)
 	{
 		_PwmChannels[cycle].proceedCycle(CurrentSecOfDay, CurrentMilli);
@@ -1221,3 +1229,176 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 		CurrentWriteValue = 0;
 	}
 }
+
+#if defined(USE_WEBSERVER)
+
+// Macro implementation: activateMacro
+bool AquaControl::activateMacro(const String &macroId, uint32_t duration)
+{
+	// Check if macro is already active
+	if (_activeMacro.active)
+	{
+		Serial.println(F("❌ Macro already active"));
+		return false;
+	}
+
+	// Guard against zero duration
+	if (duration == 0)
+	{
+		Serial.println(F("❌ Invalid macro duration: 0"));
+		return false;
+	}
+
+	// Backup current schedules to restore later
+	for (uint8_t ch = 0; ch < PWM_CHANNELS; ch++)
+	{
+		_activeMacro.originalTargetCounts[ch] = _PwmChannels[ch].TargetCount;
+		for (uint8_t t = 0; t < _PwmChannels[ch].TargetCount; t++)
+		{
+			_activeMacro.originalTargets[ch][t] = _PwmChannels[ch].Targets[t];
+		}
+	}
+
+	// Load macro targets from SD card for each channel
+	for (uint8_t ch = 0; ch < PWM_CHANNELS; ch++)
+	{
+		char sTempFilename[50];
+		sprintf(sTempFilename, "macros/%s_ch%02d.cfg", macroId.c_str(), ch);
+
+		// If macro file exists for this channel, load it
+		if (SD.exists(sTempFilename))
+		{
+			// Clear existing targets for this channel
+			_PwmChannels[ch].TargetCount = 0;
+
+			// Open and parse macro file
+			File macroFile = SD.open(sTempFilename);
+			if (macroFile)
+			{
+				// Use char buffer to avoid heap fragmentation (matches computeMacroDuration pattern)
+				char lineBuf[64];
+				while (macroFile.available())
+				{
+					int len = macroFile.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
+					if (len == 0)
+						continue;
+					lineBuf[len] = '\0';
+
+					// Strip CR if present
+					if (len > 0 && lineBuf[len - 1] == '\r')
+					{
+						lineBuf[len - 1] = '\0';
+						len--;
+					}
+
+					// Skip empty lines or comments
+					if (len == 0 || (lineBuf[0] == '/' && lineBuf[1] == '/'))
+						continue;
+
+					// Find semicolon separator
+					char *semi = strchr(lineBuf, ';');
+					if (!semi)
+						continue;
+
+					// Parse time from start to semicolon
+					long timeVal = 0;
+					char *colon = strchr(lineBuf, ':');
+					if (colon && colon < semi)
+					{
+						// MM:SS format
+						*colon = '\0';
+						timeVal = atoi(lineBuf) * 60 + atoi(colon + 1);
+					}
+					else
+					{
+						// Seconds format
+						timeVal = atoi(lineBuf);
+					}
+
+					// Parse value after semicolon
+					int value = atoi(semi + 1);
+					value = max(0, min(100, value));
+
+					Target t;
+					t.Time = timeVal;
+					t.Value = (uint8_t)value;
+					_PwmChannels[ch].addTarget(t);
+				}
+				macroFile.close();
+				_PwmChannels[ch].HasToWritePwm = true; // Force PWM update
+			}
+		}
+		else
+		{
+			// If macro file doesn't exist for this channel, clear it
+			_PwmChannels[ch].TargetCount = 0;
+			_PwmChannels[ch].HasToWritePwm = true;
+		}
+	}
+
+	// Set macro state
+	_activeMacro.active = true;
+	_activeMacro.startTime = now();
+	_activeMacro.duration = duration;
+	strncpy(_activeMacro.macroId, macroId.c_str(), 19);
+	_activeMacro.macroId[19] = '\0';
+
+	_IsFirstCycle = true; // Force immediate PWM updates
+
+	Serial.print(F("🎬 Macro activated: "));
+	Serial.print(macroId);
+	Serial.print(F(", duration: "));
+	Serial.print(duration);
+	Serial.println(F("s"));
+
+	return true;
+}
+
+// Macro implementation: restoreSchedule
+void AquaControl::restoreSchedule()
+{
+	if (!_activeMacro.active)
+	{
+		return;
+	}
+
+	// Restore original targets for all channels
+	for (uint8_t ch = 0; ch < PWM_CHANNELS; ch++)
+	{
+		_PwmChannels[ch].TargetCount = _activeMacro.originalTargetCounts[ch];
+		for (uint8_t t = 0; t < _activeMacro.originalTargetCounts[ch]; t++)
+		{
+			_PwmChannels[ch].Targets[t] = _activeMacro.originalTargets[ch][t];
+		}
+		_PwmChannels[ch].HasToWritePwm = true; // Force PWM update
+	}
+
+	// Clear macro state
+	_activeMacro.active = false;
+	_activeMacro.startTime = 0;
+	_activeMacro.duration = 0;
+	_activeMacro.macroId[0] = '\0';
+
+	_IsFirstCycle = true; // Force immediate PWM updates
+
+	Serial.println(F("✅ Macro auto-restored"));
+}
+
+// Macro implementation: getMacroTimeRemaining
+uint32_t AquaControl::getMacroTimeRemaining() const
+{
+	if (!_activeMacro.active)
+	{
+		return 0;
+	}
+
+	uint32_t elapsed = now() - _activeMacro.startTime;
+	if (elapsed >= _activeMacro.duration)
+	{
+		return 0;
+	}
+
+	return _activeMacro.duration - elapsed;
+}
+
+#endif

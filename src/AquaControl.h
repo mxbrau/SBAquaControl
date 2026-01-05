@@ -181,6 +181,19 @@ typedef struct
 	time_t Time;   // The time in seconds after 01.01.1970 when the value should be reached.
 } Target;
 
+#if defined(USE_WEBSERVER)
+/* Macro state tracking for temporary lighting overrides */
+typedef struct
+{
+	bool active;														// Is a macro currently running?
+	time_t startTime;													// Unix timestamp when macro was activated
+	uint32_t duration;													// Macro duration in seconds
+	char macroId[20];													// Macro identifier (e.g., "macro_001")
+	Target originalTargets[PWM_CHANNELS][MAX_TARGET_COUNT_PER_CHANNEL]; // Backup of original schedules
+	uint8_t originalTargetCounts[PWM_CHANNELS];							// Backup of original target counts
+} MacroState;
+#endif
+
 class PwmChannel
 {
 private:
@@ -288,15 +301,24 @@ public:
 #if defined(ESP8266)
 	WlanConfig _WlanConfig;
 #endif
+#if defined(USE_WEBSERVER)
+	MacroState _activeMacro; // Current active macro state
+#endif
 
 	// Time sync state tracking
-	time_t _LastTimeSync;				 // Timestamp of last successful sync
-	TimeSyncSource _LastTimeSyncSource;	 // Source of last successful sync
-	bool _NtpSyncFailed;				 // True if last NTP attempt failed (signals browser to auto-sync)
+	time_t _LastTimeSync;				// Timestamp of last successful sync
+	TimeSyncSource _LastTimeSyncSource; // Source of last successful sync
+	bool _NtpSyncFailed;				// True if last NTP attempt failed (signals browser to auto-sync)
 
 	AquaControl()
 	{
 		_IsFirstCycle = true;
+#if defined(USE_WEBSERVER)
+		_activeMacro.active = false;
+		_activeMacro.startTime = 0;
+		_activeMacro.duration = 0;
+		_activeMacro.macroId[0] = '\0';
+#endif
 		_LastTimeSync = 0;
 		_LastTimeSyncSource = TimeSyncSource::Unknown;
 		_NtpSyncFailed = false;
@@ -309,6 +331,14 @@ public:
 	void proceedCycle();
 
 	void writePwmToDevice(uint8_t channel);
+
+#if defined(USE_WEBSERVER)
+	/* Macro activation and management */
+	bool activateMacro(const String &macroId, uint32_t duration);
+	void restoreSchedule();
+	bool isMacroActive() const { return _activeMacro.active; }
+	uint32_t getMacroTimeRemaining() const;
+#endif
 
 #if defined(ESP8266)
 	IPAddress extractIPAddress(const String &sIP);

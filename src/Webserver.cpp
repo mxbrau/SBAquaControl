@@ -208,7 +208,27 @@ void handleApiStatus()
 	sprintf(buf, "%lu", millis() / 1000);
 	_Server.sendContent(buf);
 
-	_Server.sendContent(",\"macro_active\":false}");
+	// Add macro state to status response
+#if defined(USE_WEBSERVER)
+	if (_aqc->isMacroActive())
+	{
+		uint32_t remaining = _aqc->getMacroTimeRemaining();
+		_Server.sendContent(",\"macro_active\":true,\"macro_expires_in\":");
+		sprintf(buf, "%lu", (unsigned long)remaining);
+		_Server.sendContent(buf);
+		_Server.sendContent(",\"macro_id\":\"");
+		_Server.sendContent(_aqc->_activeMacro.macroId);
+		_Server.sendContent("\"");
+	}
+	else
+	{
+		_Server.sendContent(",\"macro_active\":false");
+	}
+#else
+	_Server.sendContent(",\"macro_active\":false");
+#endif
+
+	_Server.sendContent("}");
 }
 
 // API: GET /api/schedule/get?channel=N
@@ -699,6 +719,197 @@ void handleApiTestExit()
 	_Server.send(200, "application/json", "{\"status\":\"ok\",\"test_mode\":false}");
 }
 
+// Forward declaration
+uint32_t computeMacroDurationFromFiles(const String &macroId);
+
+// Helper: Save macro metadata (name + duration) to JSON file
+bool saveMacroMetadata(const String &macroId, const String &name, uint32_t duration)
+{
+	char metadataPath[50];
+	sprintf(metadataPath, "macros/%s.json", macroId.c_str());
+
+	// Delete old metadata if exists
+	if (SD.exists(metadataPath))
+	{
+		SD.remove(metadataPath);
+	}
+
+	// Create new metadata file
+	File metaFile = SD.open(metadataPath, FILE_WRITE);
+	if (!metaFile)
+	{
+		Serial.print(F("Error: Couldn't create metadata file "));
+		Serial.println(metadataPath);
+		return false;
+	}
+
+	// Write JSON metadata (stream to avoid heap fragmentation)
+	metaFile.print("{\"name\":\"");
+	metaFile.print(name);
+	metaFile.print("\",\"duration\":");
+	metaFile.print(duration);
+	metaFile.print("}");
+	metaFile.close();
+
+	Serial.print(F("✅ Metadata saved: "));
+	Serial.println(metadataPath);
+	return true;
+}
+
+// Helper: Load macro metadata from JSON file
+// Returns true if metadata found, false otherwise
+bool loadMacroMetadata(const String &macroId, String &outName, uint32_t &outDuration)
+{
+	char metadataPath[50];
+	sprintf(metadataPath, "macros/%s.json", macroId.c_str());
+
+	if (!SD.exists(metadataPath))
+	{
+		// Fallback: compute duration from files, use ID as name
+		outName = macroId;
+		outDuration = computeMacroDurationFromFiles(macroId);
+		return false;
+	}
+
+	File metaFile = SD.open(metadataPath);
+	if (!metaFile)
+	{
+		outName = macroId;
+		outDuration = computeMacroDurationFromFiles(macroId);
+		return false;
+	}
+
+	// Parse JSON manually (avoid ArduinoJson to save RAM)
+	String json = "";
+	while (metaFile.available())
+	{
+		json += (char)metaFile.read();
+	}
+	metaFile.close();
+
+	// Extract name
+	int nameIdx = json.indexOf("\"name\":\"");
+	if (nameIdx != -1)
+	{
+		int nameStart = nameIdx + 8;
+		int nameEnd = json.indexOf("\"", nameStart);
+		if (nameEnd != -1)
+		{
+			outName = json.substring(nameStart, nameEnd);
+		}
+		else
+		{
+			outName = macroId;
+		}
+	}
+	else
+	{
+		outName = macroId;
+	}
+
+	// Extract duration
+	int durIdx = json.indexOf("\"duration\":");
+	if (durIdx != -1)
+	{
+		int durStart = durIdx + 11;
+		int durEnd = json.indexOf("}", durStart);
+		if (durEnd == -1)
+		{
+			durEnd = json.length();
+		}
+		String durStr = json.substring(durStart, durEnd);
+		durStr.trim();
+		outDuration = durStr.toInt();
+	}
+	else
+	{
+		outDuration = computeMacroDurationFromFiles(macroId);
+	}
+
+	return true;
+}
+
+// Helper: Compute macro duration from stored channel files (fallback when no metadata)
+// Returns duration in seconds (0 if no macro files found)
+uint32_t computeMacroDurationFromFiles(const String &macroId)
+{
+	uint32_t maxTime = 0;
+	bool foundAnyFile = false;
+
+	// Scan all 16 channels to find max target time
+	for (uint8_t ch = 0; ch < PWM_CHANNELS; ch++)
+	{
+		char sTempFilename[50];
+		sprintf(sTempFilename, "macros/%s_ch%02d.cfg", macroId.c_str(), ch);
+
+		if (SD.exists(sTempFilename))
+		{
+			foundAnyFile = true;
+			File macroFile = SD.open(sTempFilename);
+			if (macroFile)
+			{
+				// Use char buffer instead of String to avoid heap fragmentation
+				char lineBuf[64];
+				while (macroFile.available())
+				{
+					int len = macroFile.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
+					if (len == 0)
+						continue;
+					lineBuf[len] = '\0';
+
+					// Strip CR if present
+					if (len > 0 && lineBuf[len - 1] == '\r')
+					{
+						lineBuf[len - 1] = '\0';
+						len--;
+					}
+
+					// Skip empty lines or comments
+					if (len == 0 || (lineBuf[0] == '/' && lineBuf[1] == '/'))
+						continue;
+
+					// Find semicolon separator
+					char *semi = strchr(lineBuf, ';');
+					if (!semi)
+						continue;
+
+					// Parse time from start to semicolon
+					long timeVal = 0;
+					char *colon = strchr(lineBuf, ':');
+					if (colon && colon < semi)
+					{
+						// MM:SS format
+						*colon = '\0';
+						timeVal = atoi(lineBuf) * 60 + atoi(colon + 1);
+					}
+					else
+					{
+						// Seconds format
+						timeVal = atoi(lineBuf);
+					}
+
+					if ((uint32_t)timeVal > maxTime)
+					{
+						maxTime = (uint32_t)timeVal;
+					}
+				}
+				macroFile.close();
+			}
+		}
+	}
+
+	return foundAnyFile ? maxTime : 0;
+}
+
+// Helper: Compute macro duration and name (wrapper using metadata)
+// Returns duration in seconds and sets name via parameter
+uint32_t computeMacroDuration(const String &macroId, String &outName)
+{
+	uint32_t duration = 0;
+	loadMacroMetadata(macroId, outName, duration);
+	return duration;
+}
+
 // API: GET /api/macro/list
 void handleApiMacroList()
 {
@@ -727,10 +938,23 @@ void handleApiMacroList()
 			firstMacro = false;
 
 			// Build macro ID (e.g., "macro_001")
-			char idBuf[64];
 			String macroIdStr = sMacroPath.substring(7, sMacroPath.indexOf("_ch"));
-			sprintf(idBuf, "{\"id\":\"%s\",\"name\":\"%s\"}", macroIdStr.c_str(), macroIdStr.c_str());
-			_Server.sendContent(idBuf);
+
+			// Compute duration and get name
+			String macroName;
+			uint32_t duration = computeMacroDuration(macroIdStr, macroName);
+
+			// Send JSON with id, name, and duration
+			// Use _Server.sendContent() to avoid buffer size concerns
+			_Server.sendContent("{\"id\":\"");
+			_Server.sendContent(macroIdStr);
+			_Server.sendContent("\",\"name\":\"");
+			_Server.sendContent(macroName);
+			_Server.sendContent("\",\"duration\":");
+			char durBuf[16];
+			sprintf(durBuf, "%lu", (unsigned long)duration);
+			_Server.sendContent(durBuf);
+			_Server.sendContent("}");
 		}
 	}
 
@@ -742,6 +966,9 @@ void handleApiMacroGet()
 {
 	String macroId = _Server.arg("id");
 
+	Serial.print(F("📂 GET macro request: id="));
+	Serial.println(macroId);
+
 	if (macroId.length() == 0)
 	{
 		_Server.send(400, "application/json", "{\"error\":\"Missing macro id\"}");
@@ -752,12 +979,21 @@ void handleApiMacroGet()
 	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
 	_Server.send(200, "application/json", "");
 
-	char buf[48];
-	sprintf(buf, "{\"id\":\"");
-	_Server.sendContent(buf);
-	_Server.sendContent(macroId);
-	_Server.sendContent("\",\"channels\":[");
+	// Compute duration and name
+	String macroName;
+	uint32_t duration = computeMacroDuration(macroId, macroName);
 
+	_Server.sendContent("{\"id\":\"");
+	_Server.sendContent(macroId);
+	_Server.sendContent("\",\"name\":\"");
+	_Server.sendContent(macroName);
+	_Server.sendContent("\",\"duration\":");
+	char durBuf[16];
+	sprintf(durBuf, "%lu", (unsigned long)duration);
+	_Server.sendContent(durBuf);
+	_Server.sendContent(",\"channels\":[");
+
+	char buf[48]; // Buffer for formatting JSON within the loop
 	for (uint8_t ch = 0; ch < 6; ch++)
 	{
 		if (ch > 0)
@@ -766,18 +1002,20 @@ void handleApiMacroGet()
 		sprintf(buf, "{\"channel\":%u,\"targets\":[", ch);
 		_Server.sendContent(buf);
 
-		// Try to read macro file
+		// Try to read macro file (use consistent format with save: %02d for leading zeros)
 		char sTempFilename[50];
-		String sMacroPath = "macros/";
-		sMacroPath += macroId;
-		sMacroPath += "_ch";
-		sMacroPath += (ch <= 9 ? (String("0") + String(ch)) : String(ch));
-		sMacroPath += ".cfg";
-		sMacroPath.toCharArray(sTempFilename, 50);
+		sprintf(sTempFilename, "macros/%s_ch%02d.cfg", macroId.c_str(), ch);
+
+		Serial.print(F("  Trying to open: "));
+		Serial.print(sTempFilename);
 
 		File macroFile = SD.open(sTempFilename);
 		if (macroFile)
 		{
+			Serial.print(F(" ✓ (size="));
+			Serial.print(macroFile.size());
+			Serial.println(F(" bytes)"));
+			uint8_t targetCount = 0;
 			bool targetFirst = true;
 			while (macroFile.available())
 			{
@@ -816,10 +1054,18 @@ void handleApiMacroGet()
 					_Server.sendContent(",");
 				targetFirst = false;
 
-				sprintf(buf, "{\"time\":%ld,\"value\":%d}", timeVal, value);
+				sprintf(buf, "{\"time\":%ld,\"value\":%d,\"isControl\":true}", timeVal, value);
 				_Server.sendContent(buf);
+				targetCount++;
 			}
 			macroFile.close();
+			Serial.print(F("    Loaded "));
+			Serial.print(targetCount);
+			Serial.println(F(" targets"));
+		}
+		else
+		{
+			Serial.println(F(" ✗ NOT FOUND"));
 		}
 
 		_Server.sendContent("]}");
@@ -833,56 +1079,103 @@ void handleApiMacroSave()
 {
 	String body = _Server.arg("plain");
 
-	// Parse macro id (user-provided name)
-	int idIdx = body.indexOf("\"id\":");
-	if (idIdx == -1)
+	// Parse macro ID from request body (for edit mode)
+	String requestedMacroId = "";
+	int idIdx = body.indexOf("\"id\":\"");
+	if (idIdx != -1)
 	{
-		_Server.send(400, "application/json", "{\"error\":\"Missing id\"}");
-		return;
+		int idStart = idIdx + 6;
+		int idEnd = body.indexOf("\"", idStart);
+		if (idEnd != -1)
+		{
+			requestedMacroId = body.substring(idStart, idEnd);
+			requestedMacroId.trim();
+		}
 	}
 
-	int idStart = idIdx + 5;
-	int idEnd = body.indexOf(',', idStart);
-	if (idEnd == -1)
-		idEnd = body.indexOf('}', idStart);
-	String userMacroId = body.substring(idStart, idEnd);
-	userMacroId.trim();
-	if (userMacroId.startsWith("\""))
-		userMacroId = userMacroId.substring(1, userMacroId.length() - 1);
-
-	if (userMacroId.length() == 0)
-	{
-		_Server.send(400, "application/json", "{\"error\":\"Invalid id\"}");
-		return;
-	}
-
-	// Generate normalized macro ID: find next available macro_NNN
-	uint16_t macroNum = 1;
-	String normalizedMacroId;
+	// Determine macro ID: use requested ID if it exists (edit mode), otherwise generate new one
+	String macroId;
 	char sTempFilename[50];
 
-	// Find first available macro number
-	while (macroNum <= 999)
+	if (requestedMacroId.length() > 0 && requestedMacroId.startsWith("macro_"))
 	{
-		normalizedMacroId = "macro_";
-		normalizedMacroId += (macroNum <= 9 ? "00" : (macroNum <= 99 ? "0" : ""));
-		normalizedMacroId += String(macroNum);
-
-		String checkPath = "macros/";
-		checkPath += normalizedMacroId;
-		checkPath += "_ch00.cfg";
-		checkPath.toCharArray(sTempFilename, 50);
-
-		// If this macro already exists, use it (edit mode); otherwise keep looking for next available
-		if (!SD.exists(sTempFilename))
+		// Edit mode: use the provided ID if it exists
+		sprintf(sTempFilename, "macros/%s_ch00.cfg", requestedMacroId.c_str());
+		if (SD.exists(sTempFilename))
 		{
-			break; // Found an available slot
+			macroId = requestedMacroId;
+			Serial.print(F("📝 Editing existing macro: "));
+			Serial.println(macroId);
 		}
-		macroNum++;
+		else
+		{
+			// Requested ID doesn't exist - treat as new macro with that ID
+			macroId = requestedMacroId;
+			Serial.print(F("➕ Creating new macro with requested ID: "));
+			Serial.println(macroId);
+		}
+	}
+	else
+	{
+		// Create mode: find next available macro_NNN slot
+		uint16_t macroNum = 1;
+		char normalizedMacroId[16];
+
+		while (macroNum <= 999)
+		{
+			sprintf(normalizedMacroId, "macro_%03d", macroNum);
+			sprintf(sTempFilename, "macros/%s_ch00.cfg", normalizedMacroId);
+
+			if (!SD.exists(sTempFilename))
+			{
+				break; // Found an available slot
+			}
+			macroNum++;
+		}
+
+		macroId = normalizedMacroId;
+		Serial.print(F("➕ Creating new macro: "));
+		Serial.println(macroId);
 	}
 
-	// Use normalized ID for file storage
-	String macroId = normalizedMacroId;
+	// Parse macro name from request body
+	String macroName = macroId; // Default to ID
+	int nameIdx = body.indexOf("\"name\":\"");
+	if (nameIdx != -1)
+	{
+		int nameStart = nameIdx + 8;
+		int nameEnd = body.indexOf("\"", nameStart);
+		if (nameEnd != -1)
+		{
+			macroName = body.substring(nameStart, nameEnd);
+		}
+	}
+
+	// Parse duration from request body (needed for metadata)
+	uint32_t macroDuration = 0;
+	int durIdx = body.indexOf("\"duration\":");
+	if (durIdx != -1)
+	{
+		int durStart = durIdx + 11;
+		int durEnd = body.indexOf(',', durStart);
+		if (durEnd == -1)
+		{
+			durEnd = body.indexOf('}', durStart);
+		}
+		if (durEnd != -1)
+		{
+			String durStr = body.substring(durStart, durEnd);
+			durStr.trim();
+			macroDuration = durStr.toInt();
+		}
+	}
+
+	Serial.print(F("💾 SAVE macro request: id="));
+	Serial.print(macroId);
+	Serial.print(F(", name="));
+	Serial.print(macroName);
+	Serial.print(F(", duration="));
+	Serial.println(macroDuration);
 
 	// Parse channels array
 	int channelsIdx = body.indexOf("\"channels\":[");
@@ -893,14 +1186,26 @@ void handleApiMacroSave()
 	}
 
 	int arrayStart = channelsIdx + 12;
-	int arrayEnd = body.indexOf(']', arrayStart);
+	// Find the matching ] for the channels array (not the first ] which could be from a nested array)
+	// Count opening/closing brackets to find the correct end
+	int arrayEnd = arrayStart;
+	int bracketDepth = 1; // We're already inside the [ after "channels":[
+	while (arrayEnd < (int)body.length() && bracketDepth > 0)
+	{
+		char c = body.charAt(arrayEnd);
+		if (c == '[')
+			bracketDepth++;
+		else if (c == ']')
+			bracketDepth--;
+		arrayEnd++;
+	}
+	arrayEnd--; // Move back to the position of the final ]
 	String channelsStr = body.substring(arrayStart, arrayEnd);
 
 	// Save each channel's targets
-	uint8_t channel = 0;
 	unsigned int pos = 0;
 
-	while (pos < channelsStr.length() && channel < 6)
+	while (pos < channelsStr.length())
 	{
 		int objStart = channelsStr.indexOf('{', pos);
 		if (objStart == -1)
@@ -909,53 +1214,100 @@ void handleApiMacroSave()
 		if (objEnd == -1)
 			break;
 
-		String obj = channelsStr.substring(objStart + 1, objEnd);
+		// Parse channel number FROM the JSON object (not loop order!)
+		int channelIdx = channelsStr.indexOf("\"channel\":", objStart);
+		if (channelIdx == -1 || channelIdx > objEnd)
+		{
+			Serial.println(F("    No channel field found in object"));
+			pos = objEnd + 1;
+			continue;
+		}
 
-		// Parse targets array from object
-		int targetsIdx = obj.indexOf("\"targets\":[");
-		if (targetsIdx != -1)
+		int channelStart = channelIdx + 10;
+		int channelEnd = channelsStr.indexOf(',', channelStart);
+		if (channelEnd == -1 || channelEnd > objEnd)
+			channelEnd = objEnd;
+
+		String channelStr = channelsStr.substring(channelStart, channelEnd);
+		channelStr.trim();
+		uint8_t channel = channelStr.toInt();
+
+		if (channel >= 6)
+		{
+			Serial.print(F("    Channel out of range: "));
+			Serial.println(channel);
+			pos = objEnd + 1;
+			continue;
+		}
+
+		Serial.print(F("    Processing channel "));
+		Serial.println(channel);
+
+		// Parse targets array directly from THIS CHANNEL OBJECT (critical: find end within objEnd)
+		int targetsIdx = channelsStr.indexOf("\"targets\":[", objStart);
+		if (targetsIdx != -1 && targetsIdx < objEnd)
 		{
 			int targetsStart = targetsIdx + 11;
-			int targetsEnd = obj.indexOf(']', targetsStart);
-			String targetsStr = obj.substring(targetsStart, targetsEnd);
+			// Find matching ] for targets array using bracket depth counting
+			int targetsEnd = targetsStart;
+			int tBracketDepth = 1;
+			while (targetsEnd < (int)channelsStr.length() && tBracketDepth > 0)
+			{
+				char c = channelsStr.charAt(targetsEnd);
+				if (c == '[')
+					tBracketDepth++;
+				else if (c == ']')
+					tBracketDepth--;
+				targetsEnd++;
+			}
+			targetsEnd--; // Move back to the ] itself
 
 			// Create temp channel to store targets
 			PwmChannel tempChannel;
 			tempChannel.TargetCount = 0;
 
-			// Parse target objects
-			unsigned int tPos = 0;
-			while (tPos < targetsStr.length() && tempChannel.TargetCount < MAX_TARGET_COUNT_PER_CHANNEL)
+			Serial.print(F("    Parsing targets from position "));
+			Serial.print(targetsStart);
+			Serial.print(F(" to "));
+			Serial.println(targetsEnd);
+
+			// Parse target objects directly from channelsStr to reduce String allocations
+			unsigned int tPos = targetsStart;
+			while (tPos < (unsigned int)targetsEnd && tempChannel.TargetCount < MAX_TARGET_COUNT_PER_CHANNEL)
 			{
-				int tObjStart = targetsStr.indexOf('{', tPos);
-				if (tObjStart == -1)
+				int tObjStart = channelsStr.indexOf('{', tPos);
+				if (tObjStart == -1 || tObjStart >= targetsEnd)
+				{
+					Serial.println(F("      No more target objects found"));
 					break;
-				int tObjEnd = targetsStr.indexOf('}', tObjStart);
-				if (tObjEnd == -1)
+				}
+				int tObjEnd = channelsStr.indexOf('}', tObjStart);
+				if (tObjEnd == -1 || tObjEnd > targetsEnd)
+				{
+					Serial.println(F("      Target object end not found"));
 					break;
+				}
 
-				String tObj = targetsStr.substring(tObjStart + 1, tObjEnd);
+				// Parse time directly from channelsStr
+				int timeIdx = channelsStr.indexOf("\"time\":", tObjStart);
+				int valueIdx = channelsStr.indexOf("\"value\":", tObjStart);
 
-				// Parse time
-				int timeIdx = tObj.indexOf("\"time\":");
-				int valueIdx = tObj.indexOf("\"value\":");
-
-				if (timeIdx != -1 && valueIdx != -1)
+				if (timeIdx != -1 && timeIdx < tObjEnd && valueIdx != -1 && valueIdx < tObjEnd)
 				{
 					int timeStart = timeIdx + 7;
-					int timeEnd = tObj.indexOf(',', timeStart);
-					if (timeEnd == -1)
-						timeEnd = tObj.indexOf('}', timeStart);
-					String timeStr = tObj.substring(timeStart, timeEnd);
+					int timeEnd = channelsStr.indexOf(',', timeStart);
+					if (timeEnd == -1 || timeEnd > tObjEnd)
+						timeEnd = tObjEnd;
+					String timeStr = channelsStr.substring(timeStart, timeEnd);
 					timeStr.trim();
 					long timeVal = timeStr.toInt();
 					timeVal = max(0L, min(86400L, timeVal));
 
 					int valueStart = valueIdx + 8;
-					int valueEnd = tObj.indexOf(',', valueStart);
-					if (valueEnd == -1)
-						valueEnd = tObj.indexOf('}', valueStart);
-					String valueStr = tObj.substring(valueStart, valueEnd);
+					int valueEnd = channelsStr.indexOf(',', valueStart);
+					if (valueEnd == -1 || valueEnd > tObjEnd)
+						valueEnd = tObjEnd;
+					String valueStr = channelsStr.substring(valueStart, valueEnd);
 					valueStr.trim();
 					int val = valueStr.toInt();
 					val = max(0, min(100, val));
@@ -964,6 +1316,18 @@ void handleApiMacroSave()
 					t.Time = timeVal;
 					t.Value = (uint8_t)val;
 					tempChannel.addTarget(t);
+
+					Serial.print(F("      Added target: time="));
+					Serial.print(timeVal);
+					Serial.print(F(", value="));
+					Serial.println(val);
+				}
+				else
+				{
+					Serial.print(F("      Could not find time/value in target object (timeIdx="));
+					Serial.print(timeIdx);
+					Serial.print(F(", valueIdx="));
+					Serial.println(valueIdx);
 				}
 
 				tPos = tObjEnd + 1;
@@ -974,6 +1338,12 @@ void handleApiMacroSave()
 				// Format macro path without String concatenation to avoid heap fragmentation
 				char sTempMacroPath[50];
 				sprintf(sTempMacroPath, "macros/%s_ch%02d.cfg", macroId.c_str(), channel);
+
+				Serial.print(F("  💾 Writing: "));
+				Serial.print(sTempMacroPath);
+				Serial.print(F(" ("));
+				Serial.print(tempChannel.TargetCount);
+				Serial.print(F(" targets)"));
 
 				// Delete old file if it exists
 				if (SD.exists(sTempMacroPath))
@@ -1018,19 +1388,42 @@ void handleApiMacroSave()
 				}
 
 				configFile.close();
+				Serial.println(F(" ✓"));
 			}
 		}
 
-		channel++;
 		pos = objEnd + 1;
 	}
 
-	Serial.print(F("✅ Macro saved: "));
-	Serial.println(macroId);
+	// Save metadata file with name and duration
+	if (macroDuration == 0)
+	{
+		// Compute duration from saved files if not provided
+		macroDuration = computeMacroDurationFromFiles(macroId);
+	}
+	saveMacroMetadata(macroId, macroName, macroDuration);
 
-	char buf[64];
-	sprintf(buf, "{\"status\":\"ok\",\"id\":\"%s\"}", macroId.c_str());
-	_Server.send(200, "application/json", buf);
+	Serial.print(F("✅ Macro saved: "));
+	Serial.print(macroName);
+	Serial.print(F(" ("));
+	Serial.print(macroId);
+	Serial.println(F(")"));
+
+	// Return saved metadata
+	uint32_t duration = macroDuration;
+
+	// Build response with name (stream to avoid buffer limits)
+	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+	_Server.send(200, "application/json", "");
+	_Server.sendContent("{\"status\":\"ok\",\"id\":\"");
+	_Server.sendContent(macroId);
+	_Server.sendContent("\",\"name\":\"");
+	_Server.sendContent(macroName);
+	_Server.sendContent("\",\"duration\":");
+	char durBuf[16];
+	sprintf(durBuf, "%lu", (unsigned long)duration);
+	_Server.sendContent(durBuf);
+	_Server.sendContent("}");
 }
 
 // API: POST /api/macro/activate
@@ -1055,19 +1448,66 @@ void handleApiMacroActivate()
 	if (macroId.startsWith("\""))
 		macroId = macroId.substring(1, macroId.length() - 1);
 
-	Serial.print(F("🎬 Macro activated: "));
-	Serial.println(macroId);
+	// Parse duration from JSON body
+	int durIdx = body.indexOf("\"duration\":");
+	uint32_t duration = 0;
+	if (durIdx != -1)
+	{
+		int durStart = durIdx + 11;
+		int durEnd = body.indexOf(',', durStart);
+		if (durEnd == -1)
+			durEnd = body.indexOf('}', durStart);
+		String durStr = body.substring(durStart, durEnd);
+		durStr.trim();
+		duration = durStr.toInt();
+	}
 
-	// TODO: Implement macro activation with timer
-	_Server.send(200, "application/json", "{\"status\":\"ok\"}");
+	// If duration is zero or missing, compute from macro files
+	if (duration == 0)
+	{
+		String macroName;
+		duration = computeMacroDuration(macroId, macroName);
+		if (duration == 0)
+		{
+			_Server.send(400, "application/json", "{\"error\":\"Invalid duration\"}");
+			Serial.println(F("❌ Macro activation failed: duration is 0"));
+			return;
+		}
+	}
+
+	// Activate macro
+	if (_aqc->activateMacro(macroId, duration))
+	{
+		// Build JSON response
+		char response[100];
+		sprintf(response, "{\"status\":\"ok\",\"expires_in\":%lu}", (unsigned long)duration);
+		_Server.send(200, "application/json", response);
+
+		Serial.print(F("🎬 Macro activated: "));
+		Serial.print(macroId);
+		Serial.print(F(", duration: "));
+		Serial.print(duration);
+		Serial.println(F("s"));
+	}
+	else
+	{
+		_Server.send(500, "application/json", "{\"error\":\"Activation failed\"}");
+	}
 }
 
 // API: POST /api/macro/stop
 void handleApiMacroStop()
 {
-	Serial.println(F("🛑 Macro stopped"));
-	// TODO: Implement macro stop
-	_Server.send(200, "application/json", "{\"status\":\"ok\"}");
+	if (_aqc->isMacroActive())
+	{
+		_aqc->restoreSchedule();
+		_Server.send(200, "application/json", "{\"status\":\"ok\"}");
+		Serial.println(F("🛑 Macro stopped manually"));
+	}
+	else
+	{
+		_Server.send(400, "application/json", "{\"error\":\"No macro active\"}");
+	}
 }
 
 // API: POST /api/macro/delete
@@ -1116,6 +1556,18 @@ void handleApiMacroDelete()
 				Serial.print(F("Deleted macro file: "));
 				Serial.println(sMacroPath);
 			}
+		}
+	}
+
+	// Delete metadata file
+	char metadataPath[50];
+	sprintf(metadataPath, "macros/%s.json", macroId.c_str());
+	if (SD.exists(metadataPath))
+	{
+		if (SD.remove(metadataPath))
+		{
+			Serial.print(F("Deleted metadata file: "));
+			Serial.println(metadataPath);
 		}
 	}
 
@@ -1173,7 +1625,58 @@ void handleApiDebug()
 	sprintf(buf, "%u", ESP.getCpuFreqMHz());
 	_Server.sendContent(buf);
 
-	_Server.sendContent("}");
+	// Add macro file diagnostics
+	_Server.sendContent(",\"macros\":{");
+
+	bool firstMacro = true;
+	for (uint16_t macroNum = 1; macroNum <= 999; macroNum++)
+	{
+		char sTempFilename[50];
+		sprintf(sTempFilename, "macros/macro_%03d_ch00.cfg", macroNum);
+
+		if (SD.exists(sTempFilename))
+		{
+			if (!firstMacro)
+				_Server.sendContent(",");
+			firstMacro = false;
+
+			// Found a macro - check all 6 channels
+			char macroId[20];
+			sprintf(macroId, "macro_%03d", macroNum);
+
+			_Server.sendContent("\"");
+			_Server.sendContent(macroId);
+			_Server.sendContent("\":{");
+
+			bool firstChannel = true;
+			uint32_t totalSize = 0;
+			for (uint8_t ch = 0; ch < 6; ch++)
+			{
+				sprintf(sTempFilename, "macros/%s_ch%02d.cfg", macroId, ch);
+				if (SD.exists(sTempFilename))
+				{
+					File f = SD.open(sTempFilename);
+					if (f)
+					{
+						uint32_t fileSize = f.size();
+						totalSize += fileSize;
+						f.close();
+
+						if (!firstChannel)
+							_Server.sendContent(",");
+						firstChannel = false;
+
+						sprintf(buf, "\"ch%02d\":%lu", ch, (unsigned long)fileSize);
+						_Server.sendContent(buf);
+					}
+				}
+			}
+
+			_Server.sendContent("}");
+		}
+	}
+
+	_Server.sendContent("}}"); // Close macros object AND main JSON object
 
 	// Also log to serial
 	Serial.print(F("DEBUG: Free="));

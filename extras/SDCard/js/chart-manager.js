@@ -119,6 +119,8 @@ class ChartManager {
 
     // Update schedule data for a specific channel
     updateChannel(channel, targets) {
+        console.log(`updateChannel(${channel}):`, targets);
+
         // Normalize incoming targets
         let points = (targets || []).map(t => ({
             x: typeof t.time === 'string' ? this.parseTime(t.time) : t.time,
@@ -127,14 +129,20 @@ class ChartManager {
         }));
         points.sort((a, b) => a.x - b.x);
 
+        console.log(`  Normalized points:`, points);
+
         // Determine whether incoming points already include sampled curve
         const controlPointsPresent = points.some(p => p.isControl === true);
         let controlPoints;
         let samples;
 
+        console.log(`  controlPointsPresent:`, controlPointsPresent);
+
         if (controlPointsPresent) {
             // Use control points as the authoritative shape and resample
             controlPoints = points.filter(p => p.isControl);
+
+            console.log(`  Filtered control points:`, controlPoints);
 
             if (!this.isTimeRange && controlPoints.length > 0) {
                 const first = controlPoints[0];
@@ -149,6 +157,7 @@ class ChartManager {
             }
 
             samples = this.generateMonotoneSamples(controlPoints);
+            console.log(`  Generated samples:`, samples);
         } else {
             // No control points flagged: treat as pre-sampled
             controlPoints = [];
@@ -158,6 +167,7 @@ class ChartManager {
         this.controlSchedules[channel] = controlPoints;
         this.sampledSchedules[channel] = samples;
         this.chart.data.datasets[channel].data = samples;
+        console.log(`  Final dataset for channel ${channel}:`, this.chart.data.datasets[channel].data);
         this.chart.update('none');
     }
 

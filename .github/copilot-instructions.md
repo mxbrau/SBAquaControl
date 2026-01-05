@@ -64,7 +64,7 @@ pio run -e esp8266 --target upload          # First-time USB upload
 pio run -e esp8266_ota --target upload      # WiFi OTA (after initial setup)
 pio device monitor                          # Monitor serial output
 ```
-❌ **Never** run `pio` in regular PowerShell or Terminal. **Always** use VS Code's PlatformIO CLI terminal.
+❌ **Never** run `pio` in regular PowerShell or Terminal. **Always** ask the user to use VS Code's PlatformIO CLI terminal.
 
 ### Example Usage Pattern ([examples/AquaControlSketch/AquaControlSketch.ino](../examples/AquaControlSketch/AquaControlSketch.ino))
 ```cpp

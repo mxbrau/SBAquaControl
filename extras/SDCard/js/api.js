@@ -95,10 +95,10 @@ const API = {
         });
     },
 
-    async activateMacro(id) {
+    async activateMacro(id, duration) {
         return this.call(CONFIG.api.macroActivate, {
             method: 'POST',
-            body: JSON.stringify({ id })
+            body: JSON.stringify({ id, duration })
         });
     },
 
