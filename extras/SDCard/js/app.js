@@ -557,6 +557,12 @@ function showMacroWizard() {
 function closeMacroWizard() {
     document.getElementById('macroWizard').classList.add('hidden');
 
+    // Reset wizard state
+    wizardMode = 'create';
+    wizardMacroId = null;
+    wizardMacroName = null;
+    wizardDurationSeconds = 0;
+
     // Cleanup macro chart
     if (macroChart) {
         macroChart.destroy();
@@ -633,6 +639,8 @@ async function saveMacro() {
         }))
     }));
 
+    console.log('💾 MACRO SAVE - Channels being sent:', JSON.stringify(channels, null, 2));
+
     try {
         await API.saveMacro(macroId, name, duration, channels);
         console.log(`✅ Macro saved: ${name}`);
@@ -708,6 +716,8 @@ async function editMacro(macroId) {
     try {
         const data = await API.getMacro(macroId);
 
+        console.log('📝 Loading macro for edit:', data);
+
         // Populate form
         document.getElementById('wizardMacroNameInput').value = data.name || macroId;
         const hours = Math.floor(data.duration / 3600);
@@ -731,7 +741,9 @@ async function editMacro(macroId) {
         macroChart.init();
 
         // Load existing schedule
+        console.log('📊 Loading channels into chart:', data.channels.length);
         data.channels.forEach(ch => {
+            console.log(`  Channel ${ch.channel}: ${ch.targets.length} targets`, ch.targets);
             macroChart.updateChannel(ch.channel, ch.targets);
         });
 
