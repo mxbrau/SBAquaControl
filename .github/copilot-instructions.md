@@ -130,7 +130,14 @@ Agents use [.github/learning-progress.md](.github/learning-progress.md) to track
 **For learning agents**: Read learning-progress.md before explaining, adjust depth based on confidence flags, and append summaries after explanations for user review.
 
 ## Current Status
-Project version 0.5.001 (build 2017-12-10). Active development on macro timer, time-setting API, and code cleanup.
+Project version 0.5.001 (January 2026). All core features implemented:
+- ✅ LED schedule automation with linear interpolation
+- ✅ Macro timer system with activation/stop/auto-restore
+- ✅ Hybrid time sync (NTP → RTC → API)
+- ✅ Modern web UI with Chart.js visualization
+- ✅ Memory optimized (50-55% RAM usage)
+
+**Active development:** Phase 4 planning for enhanced visualization (optional spline curves).
 
 ## Planned UI Modernization (December 2025)
 
@@ -167,10 +174,22 @@ Regular Schedule → [User clicks "Movie Mode" macro] → Macro runs for 2 hours
 5. Save creates button in macro panel
 6. Clicking macro button activates temporary override
 
-**Storage:** `config/macros.json` contains all macro definitions
+**Storage:** `macros/macro_NNN_chNN.cfg` files on SD card
 
-### Implementation Strategy
-- **Phase 1:** JSON API endpoints (GET/POST schedule, test mode)
-- **Phase 2:** Interactive schedule editor with live preview
-- **Phase 3:** Macro wizard and activation system
+**Current Status (v0.5.001):** ✅ Fully implemented
+- All API endpoints functional
+- Timer system with auto-restore working
+- UI wizard and activation complete
+
+### Time Synchronization (v0.5.001)
+**Hybrid Time Sync System** - ✅ Implemented
+- NTP sync (optional via USE_NTP define)
+- RTC fallback (DS3231)
+- Manual sync via `/api/time/set`
+- Status tracking via TimeSyncSource enum
+- Browser auto-sync when NTP fails
+
+### Implementation Status
+- ✅ **Phase 1-3 Complete:** All core features implemented
+- **Phase 4 (Next):** Enhanced visualization with optional spline smoothing
 - **Memory optimization:** Streaming JSON to avoid String concatenation

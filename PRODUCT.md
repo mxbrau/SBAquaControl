@@ -142,18 +142,18 @@
 - WiFi range: Standard 802.11 (~50m open air)
 
 ### Software (Current Version 0.5.001)
-- No manual time-setting (RTC must be set via Arduino bootloader)
-- Macro timer not yet active (activation endpoint is stub)
-- No timezone/DST support (always UTC)
-- No user authentication (assumes trusted private network)
-- Only local HTTP (no HTTPS)
+- ✅ **Implemented**: Macro timer system with activation/stop functionality
+- ✅ **Implemented**: Time-setting API (`/api/time/set`) with hybrid sync (NTP/RTC/API)
+- ❌ **Not Implemented**: Timezone/DST support (always UTC)
+- ❌ **Not Implemented**: User authentication (assumes trusted private network)
+- ❌ **Not Implemented**: HTTPS support (only local HTTP)
 
 ### Future Enhancements
-- Macro timer implementation (Phase 2)
-- Time-setting API + UI (Phase 2)
-- Timezone support (Phase 3)
+- Timezone/DST support (Phase 3)
 - User authentication (Phase 4)
-- Gradients and animations (Phase 5)
+- Smooth curve visualization (Phase 2 - client-side only)
+- Seasonal adjustments (Phase 4)
+- Advanced animations (Phase 5)
 
 ---
 

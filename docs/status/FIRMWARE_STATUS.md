@@ -1,8 +1,8 @@
 # SBAquaControl Firmware - Current Status & Roadmap
 
-**Last Updated**: 2025-12-30  
+**Last Updated**: 2026-01-05  
 **Firmware Version**: 0.5.001  
-**Status**: ✅ **STABLE** - Linear interpolation, 32 targets per channel
+**Status**: ✅ **STABLE** - All core features implemented
 
 ---
 
@@ -19,20 +19,24 @@
 - **Target Storage**: ~2.6 KB (16 channels × 32 targets × 5 bytes)
 - **Heap Available**: ~72-80 KB for runtime operations (web server, buffering, etc.)
 
-### Key Features
+### Key Features Implemented ✅
 - ✅ Linear PWM interpolation between targets
 - ✅ Streaming JSON API (no large String allocations)
 - ✅ Stable boot sequence
-- ✅ Real-time web dashboard
+- ✅ Real-time web dashboard with Chart.js
 - ✅ OTA firmware updates
-- ✅ RTC time synchronization (DS3231)
+- ✅ **Hybrid time synchronization** (NTP → RTC → API fallback)
+- ✅ **Macro timer system** with activation/stop/auto-restore
+- ✅ **Time-setting API** (`/api/time/set`)
 - ✅ Optional DS18B20 temperature monitoring
+- ✅ Test mode with 60-second timeout
 
 ### UI/UX (Current)
-- Simple form-based schedule editor (editled.htm)
+- Modern single-page application (app.htm)
 - Chart.js visualization with linear curve display
-- Control points shown as distinct markers
-- Sampled points displayed but NOT densified (no smoothing)
+- Interactive schedule editor with drag-to-edit
+- Macro creation wizard
+- Real-time status updates (temperature, time, macro state)
 - Live preview with 24-hour timeline
 
 ---
@@ -68,20 +72,35 @@ pwmValue = lastTarget.Value + (dv × progress)
 
 ---
 
-## Stability Improvements (This Session)
+## Stability Improvements (Recent Updates)
 
-### Issues Fixed
-1. **String Concatenation in Boot Sequence**
+### Features Implemented
+1. **Hybrid Time Synchronization System**
+   - NTP sync with 2-second timeout (optional via USE_NTP)
+   - RTC fallback (DS3231)
+   - Manual sync via `/api/time/set` API endpoint
+   - Status tracking via TimeSyncSource enum
+   - Impact: Boot sequence now ensures time is always set
+
+2. **Macro Timer System**
+   - Full activation/stop functionality via API
+   - Duration-based auto-restore
+   - Timer tracking in `_activeMacro` state
+   - Countdown display in web UI
+   - Manual stop capability
+   - Impact: Macros now fully functional
+
+3. **Memory Optimization**
    - Removed `String(F("...")) + String(...)` concatenations in `readLedConfig()`
    - Impact: Eliminated heap fragmentation during startup
    - Files: [src/AquaControl.cpp](../../src/AquaControl.cpp) lines 349, 357
 
-2. **RAM Over-allocation**
+4. **RAM Allocation Tuning**
    - Reduced `MAX_TARGET_COUNT_PER_CHANNEL` from 128 → 32
    - Freed: ~7.6 KB of SRAM
    - Result: 82% → 50-55% compile-time RAM usage
 
-3. **Streaming JSON API**
+5. **Streaming JSON API**
    - Converted `sprintf()` calls in schedule handlers
    - Eliminated intermediate String objects
    - Affected endpoints: `/api/schedule/get`, `/api/schedule/all`, `/api/schedule/save`
@@ -91,6 +110,8 @@ pwmValue = lastTarget.Value + (dv × progress)
 - [x] LED schedule loading works
 - [x] Web server responds to requests
 - [x] JSON API endpoints functional
+- [x] Macro activation/stop/timer works
+- [x] Time sync (NTP/RTC/API) functional
 - [ ] Test mode operations (manual channel control)
 - [ ] Save/load configurations via web UI
 - [ ] Temperature sensor integration (if enabled)
