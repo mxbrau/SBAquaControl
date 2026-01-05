@@ -884,11 +884,20 @@ void AquaControl::proceedCycle()
 	{
 		restoreSchedule();
 	}
+
+	// Use macro-relative time when a macro is active; otherwise use 24h schedule time
+	time_t timeReference = CurrentSecOfDay;
+	if (_activeMacro.active)
+	{
+		timeReference = now() - _activeMacro.startTime;
+	}
+#else
+	time_t timeReference = CurrentSecOfDay;
 #endif
 
 	for (cycle = 0; cycle < PWM_CHANNELS; cycle++)
 	{
-		_PwmChannels[cycle].proceedCycle(CurrentSecOfDay, CurrentMilli);
+		_PwmChannels[cycle].proceedCycle(timeReference, CurrentMilli);
 		if (_PwmChannels[cycle].HasToWritePwm || _IsFirstCycle)
 		{
 			writePwmToDevice(cycle);
