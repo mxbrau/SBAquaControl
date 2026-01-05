@@ -1,21 +1,24 @@
 # SBAquaControl Development Roadmap
 
 **Current Version**: 0.5.001  
-**Status**: ✅ Stable with linear interpolation  
+**Status**: ✅ Stable with all core features implemented  
 **Next Milestone**: Phase 2 - Enhanced Visualization (Q1 2026)
 
 ---
 
 ## Version History
 
-### v0.5.001 (Current - December 2025)
-**Focus**: Stability & Optimization
+### v0.5.001 (Current - January 2026)
+**Focus**: Core Feature Completion & Stability
 
 **Achievements**:
 - ✅ Fixed critical OOM crashes during boot
 - ✅ Optimized ESP8266 RAM usage (82% → 50-55%)
 - ✅ Implemented streaming JSON API (no large String allocations)
 - ✅ Updated UI to show linear interpolation only (matches firmware)
+- ✅ **Implemented hybrid time synchronization** (NTP → RTC → API fallback)
+- ✅ **Implemented macro timer system** with activation/stop/auto-restore
+- ✅ **Implemented time-setting API** (`/api/time/set`)
 - ✅ Comprehensive testing documentation
 
 **Known Limitations**:
@@ -195,9 +198,55 @@ void handleApiScheduleGenerate() {
 
 ---
 
-## Phase 3: Dynamic Curve Generation (Q1-Q2 2026)
+## Phase 3: Macro System & Dynamic Curves (Q1-Q2 2026) - ✅ COMPLETED
 
-### Goal
+### Status: ✅ COMPLETED (January 2026)
+
+All macro system features have been implemented:
+
+**Completed Features**:
+- ✅ Macro creation wizard UI
+- ✅ Macro persistence to SD card
+- ✅ Runtime macro activation with timer tracking
+- ✅ Auto-restore after duration expires
+- ✅ Manual stop functionality
+- ✅ UI banner & countdown display
+- ✅ API endpoints: list, get, save, activate, stop, delete
+
+**Implementation Files**:
+- `src/AquaControl.h` - MacroState struct and tracking
+- `src/AquaControl.cpp` - Macro file I/O and lifecycle
+- `src/Webserver.cpp` - API endpoints (handleApiMacro*)
+- `extras/SDCard/js/app.js` - Macro wizard and activation UI
+
+### Architecture (As Implemented)
+
+```
+User clicks: [Movie Mode 🎬]
+    ↓
+POST /api/macro/activate {id, duration}
+    ↓
+Backend loads macro configs from SD
+    ↓
+_activeMacro.isActive = true
+_activeMacro.expiresAt = now() + duration
+    ↓
+proceedCycle() prioritizes macro targets
+    ↓
+Timer counts down (visible in UI)
+    ↓
+When expired: auto-restore to regular schedule
+    ↓
+Banner shows: "Movie Mode - 1:45 remaining"
+```
+
+**Data Storage**: `macros/macro_NNN_chNN.cfg` (duration-based format)
+
+---
+
+## Phase 4: Enhanced Visualization (Q1 2026) - NEXT
+
+### Goal (Moved from Phase 2)
 Allow arbitrary curve creation with unlimited control points
 
 ### Key Feature: Macro System
@@ -379,27 +428,29 @@ Schedules: Always in local timezone
 ## Timeline Summary
 
 ```
-December 2025: v0.5.001 (Current)
+January 2026: v0.5.001 (Current - STABLE)
+├─ ✅ Core feature completion
+├─ ✅ Macro timer system implemented
+├─ ✅ Hybrid time sync implemented
 ├─ ✅ Stability & optimization
-├─ ✅ Linear interpolation UI
 └─ ✅ Comprehensive testing
 
-Q1 2026: Phase 2 - Enhanced Visualization
+Q1 2026: Phase 4 - Enhanced Visualization (NEXT)
 ├─ Optional spline smoothing
 ├─ Dual mode (linear/smooth)
 └─ Client-side algorithms
 
-Q1-Q2 2026: Phase 3 - Macro System
-├─ Temporary overrides
-├─ Predefined scenarios
-└─ Smart fade-back
+Q1-Q2 2026: Phase 3 - ✅ COMPLETED
+├─ ✅ Macro system implemented
+├─ ✅ Temporary overrides working
+└─ ✅ Smart auto-restore
 
-Q2 2026: Phase 4 - Seasonal Support
+Q2 2026: Phase 5 - Seasonal Support
 ├─ Date-based adjustments
 ├─ Temperature feedback
 └─ Timezone support
 
-Beyond Q2 2026: Phase 5 - Advanced Features
+Beyond Q2 2026: Phase 6 - Advanced Features
 ├─ Mobile app
 ├─ AI scheduling
 ├─ Community profiles
@@ -410,20 +461,21 @@ Beyond Q2 2026: Phase 5 - Advanced Features
 
 ## Success Metrics
 
-### Phase 2 (Q1 2026)
+### Phase 3 (Macro System) - ✅ COMPLETED
+- ✅ Macros activate within 1 second
+- ✅ Fade-back smooth and natural
+- ✅ Timer tracking functional
+- ✅ All API endpoints working
+- ✅ Auto-restore implemented
+
+### Phase 4 (Enhanced Visualization) - NEXT (Q1 2026)
 - ✅ Smooth curves render correctly
 - ✅ Sample generation completes <500ms
 - ✅ User can easily toggle modes
 - ✅ Device still executes linear interpolation
 - ✅ No firmware modifications required
 
-### Phase 3 (Q1-Q2 2026)
-- ✅ Macros activate within 1 second
-- ✅ Fade-back smooth and natural
-- ✅ Macro history logged
-- ✅ All predefined macros functional
-
-### Phase 4 (Q2 2026)
+### Phase 5 (Seasonal Support) - Q2 2026
 - ✅ Seasonal adjustments intuitive
 - ✅ Temperature feedback stable (<2% error)
 - ✅ Multiple timezones supported
@@ -500,6 +552,6 @@ Guidelines for future developers:
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025-12-30  
-**Status**: Approved for Phase 2 planning
+**Document Version**: 2.0  
+**Last Updated**: 2026-01-05  
+**Status**: Phase 3 completed, Phase 4 ready for planning

@@ -89,18 +89,31 @@ For detailed hardware specifications, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## 📝 Changelog
+## 📝 Current Status
 
-### 2017-12-10 Build 0.5.001
-- Testmodus hinzugefügt: In der Weboberfläche gibt es einen Testmodus. Man kann für jeden Kanal einen Wert eingeben und auf "Testmodus aktivieren" klicken. Die Steuerung stellt die Lichtkanäle anschließend auf diese Werte ein. Der Testmodus kann über die Schaltfläche "Testmodus deaktivieren" verlassen werden. Der Testmodus bleibt maximal 60 Sekunden lang aktiviert.
+**Version**: 0.5.001  
+**Last Updated**: 2026-01-05
+
+### Implemented Features
+- ✅ **24-hour LED Schedule Automation** - Linear interpolation between targets
+- ✅ **Web Interface** - Modern single-page app with Chart.js visualization
+- ✅ **Macro System** - Temporary lighting overrides with timer support
+- ✅ **Hybrid Time Sync** - NTP → RTC → API fallback system
+- ✅ **Test Mode** - Manual channel control (60-second timeout)
+- ✅ **Temperature Monitoring** - Optional DS18B20 sensor support
+- ✅ **OTA Updates** - Wireless firmware updates via WiFi
+- ✅ **Memory Optimized** - 50-55% RAM usage on ESP8266
+
+### Known Limitations
+- Linear interpolation only (no smooth curves)
+- Maximum 32 targets per channel
+- No timezone/DST support (UTC only)
+- No user authentication (assumes trusted network)
+
+See [ROADMAP](docs/status/ROADMAP.md) for planned enhancements.
 
 ---
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-**Version**: 0.5.001  
-**Last Updated**: 2026-01-02

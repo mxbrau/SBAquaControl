@@ -1,7 +1,12 @@
 # Browser Auto-Sync Time Feature
 
+**Status**: ✅ IMPLEMENTED  
+**Last Updated**: January 5, 2026
+
 ## Overview
 When NTP sync fails (e.g., router NTP not configured), the ESP8266 signals the browser to automatically provide the current time via the `/api/status` endpoint's `needs_time_sync` flag.
+
+**Current Status**: This feature is fully functional in v0.5.001. The web UI automatically syncs time when needed.
 
 ## How It Works
 
