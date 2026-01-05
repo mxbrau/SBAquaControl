@@ -200,11 +200,21 @@ async function loadMacros() {
         const data = await API.getMacros();
 
         if (data.macros) {
-            // Backend now provides duration in list response - use it directly
-            state.macros = data.macros.map(macro => ({
-                id: macro.id,
-                name: macro.name || macro.id,
-                duration: macro.duration || 0  // Duration from backend (max target time)
+            // Load full details for each macro to get duration
+            state.macros = await Promise.all(data.macros.map(async (macro) => {
+                try {
+                    const details = await API.getMacro(macro.id);
+                    // Calculate duration from first channel's last target time
+                    let duration = 3600; // Default 1 hour
+                    if (details.channels && details.channels[0] && details.channels[0].targets.length > 0) {
+                        const targets = details.channels[0].targets;
+                        duration = targets[targets.length - 1].time;
+                    }
+                    return { ...macro, duration };
+                } catch (err) {
+                    console.warn(`⚠️ Could not load duration for ${macro.id}:`, err);
+                    return { ...macro, duration: 3600 }; // Fallback to 1 hour
+                }
             }));
             renderMacroList();
             console.log(`✅ ${state.macros.length} macros loaded`);
