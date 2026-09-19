@@ -869,8 +869,23 @@ bool AquaControl::addChannelTarget(uint8_t channel, Target target)
 void AquaControl::proceedCycle()
 {
 	uint8_t cycle = 0;
-	CurrentSecOfDay = elapsedSecsToday(now());
-	CurrentMilli = millis() % 1000;
+	// Issue #7: single monotonic time base. now() (TimeLib, RTC-anchored) and
+	// millis()%1000 wrap at different phases, which put a ~1 Hz sawtooth on the
+	// fade interpolation and blinked the LEDs at the end of dim-down. Re-anchor
+	// the millisecond phase exactly when the second changes, so that
+	// CurrentSecOfDay*1000+CurrentMilli is monotonic. Unsigned subtraction also
+	// stays correct across the millis() 49-day wraparound; the 999 clamp covers
+	// loop stalls longer than one second.
+	time_t sod = elapsedSecsToday(now());
+	uint32_t msNow = millis();
+	if (sod != _lastSod)
+	{
+		_lastSod = sod;
+		_sodEdgeMilli = msNow;
+	}
+	CurrentSecOfDay = sod;
+	uint32_t msSinceEdge = msNow - _sodEdgeMilli;
+	CurrentMilli = (msSinceEdge > 999) ? 999 : (time_t)msSinceEdge;
 
 #if defined(ESP8266)
 	// Handle OTA updates
@@ -1099,7 +1114,10 @@ bool PwmChannel::removeTargetAt(uint8_t pos)
 	}
 }
 
-#define PWM_MIN 1
+// Issue #7: real minimum light level (was 1, which made the guard below
+// unsatisfiable dead code). Keep >= PWM_OFF_SNAP_COUNTS (see
+// AquaControl_config.h) so the snap-to-off and this floor stay consistent.
+#define PWM_MIN 8
 void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 {
 	if (TargetCount > 0)
@@ -1151,13 +1169,20 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 				currentTarget = Targets[0];
 				// take the last target of the current day
 				lastTarget = Targets[TargetCount - 1];
-				// and now correct the time, because the new target is at the next day. So we have to add the remaining time of the current day
-				currentTarget.Time = currentTarget.Time + (60 * 60 * 24) - lastTarget.Time;
+				// and now correct the time, because the new target is at the next day. So we have to add the remaining time of the current day.
+				// Issue #7: keep currentTarget.Time an ABSOLUTE time of day (next day), so dt below stays a plain difference.
+				currentTarget.Time = Targets[0].Time + (60 * 60 * 24);
 			}
 		}
 
 		// now calculate the graph between the two target values
-		unsigned long dt = currentTarget.Time - lastTarget.Time;
+		// Issue #7: signed dt so a bad target pair cannot silently wrap to ~4.29e9
+		// (unsigned) and freeze the channel; guard against dt <= 0.
+		int32_t dt = (int32_t)(currentTarget.Time - lastTarget.Time);
+		if (dt <= 0)
+		{
+			dt = 1;
+		}
 		int16_t dv = currentTarget.Value - lastTarget.Value;
 		float m = ((float)dv) / ((float)dt) / 1000.0;
 		float n = ((float)lastTarget.Value); // -(m * ((float)0.0));
@@ -1190,6 +1215,14 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 		else
 		{
 			_PwmTarget = (uint16_t)(((float)PWM_MAX * vx) / 100.0);
+		}
+
+		// Issue #7: snap to off. Do not hover at "just barely on" - a tiny
+		// non-zero target together with any time jitter makes the output chatter
+		// between 0 and a few counts (~1 Hz blink at the end of dim-down).
+		if (_PwmTarget <= PWM_OFF_SNAP_COUNTS)
+		{
+			_PwmTarget = 0;
 		}
 
 		// Try to fade to the target value and do not jump
@@ -1226,8 +1259,9 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 				}
 			}
 			CurrentWriteValue = _PwmValue;
-			// Thins defines a minimum light value
-			if (CurrentWriteValue > 0 && CurrentWriteValue < PWM_MIN)
+			// This defines a minimum light value (Issue #7: fixed the old
+			// unsatisfiable "x > 0 && x < 1" guard, which never fired).
+			if (CurrentWriteValue != 0 && CurrentWriteValue < PWM_MIN)
 			{
 				CurrentWriteValue = PWM_MIN;
 			}

@@ -29,4 +29,11 @@
 #define MAX_TARGET_COUNT_PER_CHANNEL 64
 #endif
 
+/* Below this many PCA9685 counts a channel is treated as fully off instead of
+   hovering at "just barely on" (issue #7: ~1 Hz blink at the end of dim-down).
+   8/4095 = 0.2 % of full scale. HARDWARE-DEPENDENT: confirm on the real tank
+   at night which is the smallest duty cycle where the Meanwell LDD + LED
+   string visibly lights, and adjust this value accordingly. */
+#define PWM_OFF_SNAP_COUNTS 8
+
 #endif
