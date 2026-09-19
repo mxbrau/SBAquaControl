@@ -15,3 +15,14 @@
 /.vscode/
 /.venv/
 *.backup
+
+# Mock server runtime state - regenerated data, never commit
+/test/data/schedules.runtime.json
+# SD-card config files the mock (and the device) write at runtime.
+# NOTE: ledch_05.cfg is tracked from before these patterns existed; the
+# uppercase LEDCH_0X.CFG entries above only match because core.ignorecase=true.
+/extras/SDCard/config/ledch_*.cfg
+
+# Test harness artifacts
+__pycache__/
+/test/.mock_server.log
