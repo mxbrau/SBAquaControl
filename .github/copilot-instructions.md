@@ -135,9 +135,9 @@ Project version 0.5.001 (January 2026). All core features implemented:
 - ✅ Macro timer system with activation/stop/auto-restore
 - ✅ Hybrid time sync (NTP → RTC → API)
 - ✅ Modern web UI with Chart.js visualization
-- ✅ Memory optimized (50-55% RAM usage)
+- ✅ Memory optimized (~56% RAM usage)
 
-**Active development:** Phase 4 planning for enhanced visualization (optional spline curves).
+**Active development:** Phase 2 planning for enhanced visualization (optional spline curves).
 
 ## Planned UI Modernization (December 2025)
 

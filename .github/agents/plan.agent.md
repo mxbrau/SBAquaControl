@@ -68,7 +68,7 @@ See [plan-template.md](plan-template.md) for the full structure.
 After generating the plan, present it for user review. Do not proceed to implementation—hand off to the `implement` agent once the plan is approved.
 
 ## Important Constraints
-- **Memory**: ESP8266 has 160KB RAM (50-55% used). Avoid `String` concatenation; use `char` buffers + `sprintf()`.
+- **Memory**: ESP8266 has 160KB RAM (~56% used). Avoid `String` concatenation; use `char` buffers + `sprintf()`.
 - **Non-blocking**: Never use `delay()` in main loop. Use tick-tock state machines for async operations.
 - **Build system**: All PlatformIO commands must run in VS Code's PlatformIO CLI terminal.
 - **Consistency**: Reference existing patterns (linear interpolation, file I/O with temp files, JSON streaming).

@@ -118,7 +118,7 @@ Suggest starting with these topics in order (user can rearrange):
 ## Important Context
 
 ### Critical Constraints
-- **Memory**: 160KB RAM, 50-55% used. Avoid `String`, use `char` buffers.
+- **Memory**: 160KB RAM, ~56% used. Avoid `String`, use `char` buffers.
 - **Non-blocking**: Never `delay()` in main loop. Use tick-tock or similar.
 - **Build**: PlatformIO CLI terminal only (not PowerShell).
 

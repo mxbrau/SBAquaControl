@@ -34,7 +34,7 @@ Default Password: sbaqc12345
 
 ```
 Hardware:
-├─ ESP8266 (160 KB RAM, 50-55% used)
+├─ ESP8266 (160 KB RAM, ~56% used)
 ├─ PCA9685 PWM Controller (16 channels)
 ├─ DS3231 RTC (optional, time sync)
 ├─ DS18B20 Temperature (optional)

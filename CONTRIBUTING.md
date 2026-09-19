@@ -64,7 +64,7 @@ All `pio` commands must run in VS Code's **PlatformIO CLI terminal**, not PowerS
 
 ## Critical Design Constraints
 
-### Memory (ESP8266: 160KB RAM, 50-55% in use)
+### Memory (ESP8266: 160KB RAM, ~56% in use)
 - ❌ **Avoid**: `String` class in production code (causes heap fragmentation)
 - ✅ **Use**: `char` buffers + `sprintf()`
 - ❌ **Avoid**: Building large strings before sending

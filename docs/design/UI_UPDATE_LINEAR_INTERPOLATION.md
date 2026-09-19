@@ -212,7 +212,7 @@ AFTER:
 ```
 
 ### Impact on RAM
-- **Firmware**: ✅ Reduced from 82% to 50-55% usage
+- **Firmware**: ✅ Reduced from 82% to ~56% usage
 - **Browser**: ✅ Slightly reduced (fewer calculations per frame)
 - **SD Card**: ✅ Unchanged (still stores same target count)
 

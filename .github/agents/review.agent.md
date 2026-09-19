@@ -87,7 +87,7 @@ Severity levels:
 ## Special Attention Areas
 
 ### Memory
-- ESP8266 constraint: 160KB RAM, 50-55% in use
+- ESP8266 constraint: 160KB RAM, ~56% in use
 - Flag any allocations in loops or `proceedCycle()`
 - Verify JSON streaming (not string building)
 
