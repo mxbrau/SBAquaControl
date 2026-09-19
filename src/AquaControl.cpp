@@ -1207,9 +1207,18 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 		if (TestMode)
 		{
 			_PwmTarget = (uint16_t)(((float)PWM_MAX * TestValue) / 100.0);
-			if (TestModeSetTime < (_aqc->CurrentSecOfDay - 60) || TestModeSetTime > _aqc->CurrentSecOfDay)
+			// TEMP-THRESHOLD-CALIB (issue #7 hardware test, REVERT before merge):
+			// raw counts hit the wire exactly, bypassing snap-to-off and floor.
+			if (TestRawActive)
+			{
+				_PwmTarget = TestRawCounts;
+			}
+			// TEMP-THRESHOLD-CALIB: 15 min timeout so the threshold can be
+			// eyeballed in the dark without re-sending every 60 s.
+			if (TestModeSetTime < (_aqc->CurrentSecOfDay - 900) || TestModeSetTime > _aqc->CurrentSecOfDay)
 			{
 				TestMode = false;
+				TestRawActive = false;
 			}
 		}
 		else
@@ -1220,7 +1229,8 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 		// Issue #7: snap to off. Do not hover at "just barely on" - a tiny
 		// non-zero target together with any time jitter makes the output chatter
 		// between 0 and a few counts (~1 Hz blink at the end of dim-down).
-		if (_PwmTarget <= PWM_OFF_SNAP_COUNTS)
+		// TEMP-THRESHOLD-CALIB: raw counts bypass the snap (exact counts on wire).
+		if (!TestRawActive && _PwmTarget <= PWM_OFF_SNAP_COUNTS)
 		{
 			_PwmTarget = 0;
 		}
@@ -1261,7 +1271,8 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 			CurrentWriteValue = _PwmValue;
 			// This defines a minimum light value (Issue #7: fixed the old
 			// unsatisfiable "x > 0 && x < 1" guard, which never fired).
-			if (CurrentWriteValue != 0 && CurrentWriteValue < PWM_MIN)
+			// TEMP-THRESHOLD-CALIB: raw counts bypass the floor (exact counts on wire).
+			if (!TestRawActive && CurrentWriteValue != 0 && CurrentWriteValue < PWM_MIN)
 			{
 				CurrentWriteValue = PWM_MIN;
 			}

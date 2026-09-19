@@ -211,12 +211,19 @@ public:
 	bool TestMode;
 	time_t TestModeSetTime;
 	uint8_t TestValue;
+
+	// TEMP-THRESHOLD-CALIB (issue #7 hardware test, REVERT before merge):
+	// raw PCA9685 counts override for finding the visible on/off threshold.
+	uint16_t TestRawCounts;
+	bool TestRawActive;
 	time_t CurrentSecOfDay;
 	time_t CurrentMilli;
 
 	PwmChannel()
 	{
 		TestMode = false;
+		TestRawActive = false;
+		TestRawCounts = 0;
 	}
 
 	uint8_t addTarget(Target t); // Inserts a new target (time and value for the channel) and gives back the position.

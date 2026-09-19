@@ -35,6 +35,22 @@
         <!-- Test Mode Banner -->
         <div id="testBanner" class="test-banner hidden">
             <span>⚡ Test-Modus aktiv - Schieberegler steuern die Lichter direkt</span>
+            <!-- TEMP-THRESHOLD-CALIB (issue #7 hardware test, REVERT before merge):
+                 raw PCA9685 counts for the visible on/off threshold check. -->
+            <span class="calib-row">
+                🔬 Kanal
+                <select id="calibChannel">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+                <input type="number" id="calibCounts" min="0" max="4095" value="8" step="1" style="width: 5em">
+                Counts
+                <button onclick="applyCalibCounts()" class="btn">Setzen</button>
+            </span>
             <button onclick="exitTestMode()" class="btn-stop">Beenden</button>
         </div>
 
