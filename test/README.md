@@ -6,9 +6,10 @@ checklist** in [`docs/status/TESTING_GUIDE.md`](../docs/status/TESTING_GUIDE.md)
 ## Run everything automated
 
 ```bash
-uv run python test/run_checks.py               # build + parity + live contract checks
+uv run python test/run_checks.py               # build + parity + live contract checks + host unit tests
 uv run python test/run_checks.py --skip-build  # fast loop while working on the UI
 uv run python test/run_checks.py --only live
+uv run python test/run_checks.py --only unit
 ```
 
 | Layer | What it proves | Needs |
@@ -16,6 +17,7 @@ uv run python test/run_checks.py --only live
 | `BUILD` | Firmware compiles for `env:esp8266` and stays inside the RAM/Flash budget | PlatformIO |
 | `PARITY` | Every route in `src/AquaControl.cpp` also exists in the mock | — |
 | `LIVE` | A freshly started mock answers all endpoints with the firmware's status codes and field names | — |
+| `UNIT` | The firmware scheduling maths (interpolation, slew limiter, time parsing) passes on the PC | PlatformIO (`env:test`, native) |
 
 `LIVE` starts its own mock server on a private port, so it never collides with a
 dev server you have running, and it stops it again. Every file it touches is
@@ -53,6 +55,26 @@ The runner and the standalone script pick it up automatically.
 
 If the firmware gains an endpoint, add it to the mock **and** to `live_checks()` —
 `BUILD`-time parity will fail until you do.
+
+## Adding a firmware test
+
+`src/` cannot compile on the PC (it needs `<Arduino.h>` and the ESP8266/SD
+stack), so `env:test` excludes it (`build_src_filter = -<*>` in
+`platformio.ini`) and tests the dependency-free mirror instead:
+
+- `test/support/aqua_logic.h` — the pure logic, function-for-function against
+  `src/AquaControl.cpp` (`PwmChannel::proceedCycle`: interpolation, slew-rate
+  limiter, `PWM_MIN` clamp) and `src/Webserver.cpp` (`parseTimeToSeconds`).
+  Each function cites the firmware lines it mirrors.
+- `test/test_pwm_logic.cpp` — the Unity tests. Add a `void test_<what>(void)`
+  plus a `RUN_TEST(test_<what>);` line in `main()`.
+
+```bash
+pio test -e test     # run the host unit tests (no hardware needed)
+```
+
+If the firmware maths changes, update the mirror **and** the expectations
+together — a test that no longer matches `src/` is a bug in the test.
 
 ## Known deviations of the mock
 

@@ -7,6 +7,8 @@ Runs, in order:
   2. PARITY  every firmware route exists in the mock (static, no server needed)
   3. LIVE    mock server is started on a private port, all endpoints are exercised
              against the firmware contract, then the server is stopped again
+  4. UNIT    host unit tests for the firmware scheduling maths run on the PC
+             (`pio test -e test`, no hardware needed)
 
 Everything it touches is restored, so the working tree is unchanged afterwards.
 
@@ -156,11 +158,35 @@ def check_live():
         log.close()
 
 
+def check_unit():
+    cmd = pio_command()
+    if cmd is None:
+        return "SKIP", "neither 'pio' nor 'uv' available - unit tests not verified"
+
+    print(f"$ {' '.join(cmd)} test -e test")
+    proc = subprocess.run(
+        cmd + ["test", "-e", "test"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    out = proc.stdout + proc.stderr
+    tail = "\n".join(out.strip().splitlines()[-10:])
+    print(tail)
+
+    passed = len(re.findall(r": (test_\w+)\s+\[PASSED\]", out))
+    if proc.returncode != 0 or "FAILED" in out:
+        return "FAIL", "host unit tests failed"
+    if passed == 0:
+        return "FAIL", "no unit tests ran (expected test/test_*.cpp cases)"
+    return "PASS", f"{passed} host unit test(s)"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--skip-build", action="store_true", help="skip the firmware build")
     parser.add_argument(
-        "--only", choices=["build", "parity", "live"], help="run a single layer"
+        "--only", choices=["build", "parity", "live", "unit"], help="run a single layer"
     )
     args = parser.parse_args()
 
@@ -168,6 +194,7 @@ def main():
         ("BUILD   firmware compiles (env:esp8266)", "build", check_build),
         ("PARITY  mock mirrors the firmware routes", "parity", check_parity),
         ("LIVE    endpoints match the firmware contract", "live", check_live),
+        ("UNIT    firmware maths pass on the host", "unit", check_unit),
     ]
 
     results = []
