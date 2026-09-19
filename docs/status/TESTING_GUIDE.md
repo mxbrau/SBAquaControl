@@ -8,6 +8,20 @@
 
 ## Pre-Testing Setup
 
+### Automated layers (run these first)
+
+This guide covers the **manual hardware** half of testing. The offline half is
+automated - run it before touching hardware, so a failure here is caught in
+seconds instead of during a test session:
+
+```bash
+uv run python test/run_checks.py               # firmware build + API parity + contract checks
+uv run python test/run_checks.py --skip-build  # faster, while iterating on the UI
+```
+
+See [`test/README.md`](../../test/README.md) for what each layer covers, how to
+add a check, and which parts still need hardware (LEDs, DS18B20, OTA).
+
 ### Requirements
 - ✅ Firmware flashed to ESP8266
 - ✅ SD card with web UI files (`app.htm`, `js/`, `css/`, config files)
