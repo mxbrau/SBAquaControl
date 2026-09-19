@@ -8,3 +8,9 @@ dependencies = [
     "flask>=2.3.0",
     "flask-cors>=4.0.0",
 ]
+
+[dependency-groups]
+dev = [
+    "platformio>=6.2.0",
+    "requests>=2.32.5",
+]
