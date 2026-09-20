@@ -299,7 +299,15 @@ public:
 	uint8_t getPhysicalChannelAddress(uint8_t channelNumber);
 
 	PwmChannel _PwmChannels[PWM_CHANNELS]; // Stores the PWM chanels
-	bool _IsFirstCycle;					   // Indicates, that we have not set any pwm value
+	bool _IsFirstCycle;				   // Indicates, that we have not set any pwm value
+private:
+	// Issue #7: single monotonic time base. The TimeLib second (RTC-anchored)
+	// and millis()%1000 wrap at different phases, producing a ~1 Hz sawtooth
+	// in the fade interpolation. We therefore re-anchor the millisecond phase
+	// exactly when the second changes, so secOfDay*1000+milliOfSec is monotonic.
+	time_t _lastSod = -1;
+	uint32_t _sodEdgeMilli = 0;
+public:
 #if defined(ESP8266)
 	WlanConfig _WlanConfig;
 #endif

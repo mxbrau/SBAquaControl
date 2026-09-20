@@ -29,4 +29,13 @@
 #define MAX_TARGET_COUNT_PER_CHANNEL 64
 #endif
 
+/* Below this many PWM counts a channel is treated as fully off instead of
+   hovering at "just barely on" (issue #7: ~1 Hz blink at the end of dim-down).
+   Hardware-tested 2026-09-20 on the real tank (Meanwell LDD + LED string via
+   PCA9685): light is visible down to 1 count, so no cutoff is needed and the
+   snap is disabled (0). The value is in raw PWM counts of the active backend
+   (4095 PCA9685, 1023 ESP8266-native, 255 AVR) - re-measure on the tank if the
+   backend or the LED hardware changes. */
+#define PWM_OFF_SNAP_COUNTS 0
+
 #endif
