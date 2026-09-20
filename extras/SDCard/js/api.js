@@ -12,7 +12,17 @@ const API = {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                // Surface the firmware's error message (e.g. macro limit reached)
+                let message = `HTTP error! status: ${response.status}`;
+                try {
+                    const data = await response.json();
+                    if (data && data.error) {
+                        message = data.error;
+                    }
+                } catch (e) {
+                    // non-JSON error body - keep the generic message
+                }
+                throw new Error(message);
             }
 
             return await response.json();
