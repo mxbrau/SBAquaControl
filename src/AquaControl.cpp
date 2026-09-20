@@ -10,6 +10,11 @@ Copyright 2016
 */
 
 #include "AquaControl.h"
+#include "OtaSerial.h"
+
+#if defined(ESP8266) && defined(USE_OTA_SERIAL)
+#define Serial OtaSerial
+#endif
 
 #if defined(USE_RTC_DS3231)
 DS3232RTC RTC;
@@ -743,6 +748,11 @@ void AquaControl::init()
 
 	initESP8266NetworkConnection();
 
+#if defined(USE_OTA_SERIAL)
+	Serial.begin();
+	Serial.println(F("OTA serial (Telnet Port 23) aktiviert."));
+#endif
+
 	// Initialize OTA (Over-The-Air) updates
 	Serial.print(F("Initializing OTA updates..."));
 	ArduinoOTA.setHostname("SBAQC");
@@ -888,6 +898,9 @@ void AquaControl::proceedCycle()
 	CurrentMilli = (msSinceEdge > 999) ? 999 : (time_t)msSinceEdge;
 
 #if defined(ESP8266)
+#if defined(USE_OTA_SERIAL)
+	Serial.handle();
+#endif
 	// Handle OTA updates
 	ArduinoOTA.handle();
 	yield(); // Prevent watchdog reset

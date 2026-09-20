@@ -59,11 +59,13 @@ This allows you to develop and test the web UI, create HTML/JavaScript files, an
    ```
 
 2. **Enable OTA for Wireless Updates**
-   
+    
    After the initial USB upload, you can update the firmware wirelessly:
    ```bash
    pio run -e esp8266_ota --target upload
+   pio device monitor -e esp8266_ota
    ```
+   `env:esp8266_ota` aktiviert OTA-Serial-Ausgabe über Telnet (`socket://SBAQC.local:23`) und spiegelt die Logs weiterhin auf USB-Serial.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions and development guidelines.
 

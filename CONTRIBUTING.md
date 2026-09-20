@@ -32,7 +32,10 @@ pio run -e esp8266 --target upload
 **OTA (WiFi) upload** (after initial setup):
 ```bash
 pio run -e esp8266_ota --target upload
+pio device monitor -e esp8266_ota
 ```
+
+`env:esp8266_ota` nutzt OTA-Serial über Telnet (`socket://SBAQC.local:23`) und spiegelt die Debug-Ausgabe zusätzlich auf USB-Serial.
 
 **Monitor serial output:**
 ```bash
