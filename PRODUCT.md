@@ -95,7 +95,7 @@
 | Channels | 16 PWM outputs (6 managed by UI, 16 by firmware) |
 | Resolution | 12-bit (0-4095 levels) |
 | Frequency | 300Hz PWM carrier |
-| Memory | 160KB RAM (50-55% used at runtime) |
+| Memory | 160KB RAM (~56% used at runtime) |
 | Storage | SD card (configs + schedules) |
 | Connectivity | WiFi 802.11b/g/n (2.4GHz) |
 | Access | Web browser (no app required) |

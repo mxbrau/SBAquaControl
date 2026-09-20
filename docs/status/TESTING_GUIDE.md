@@ -39,7 +39,7 @@ add a check, and which parts still need hardware (LEDs, DS18B20, OTA).
 ```
 Device Status:
 - Free Heap: 60-80 KB ✅ (healthy)
-- Compile-time RAM: 50-55% ✅ (normal)
+- Compile-time RAM: ~56% ✅ (normal)
 - Boot Time: <5 seconds ✅
 - API Response: <100ms ✅
 ```
@@ -580,7 +580,12 @@ NOTES:
 
 ## Known Issues (v0.5.001)
 
-1. **No issues reported yet** - This is the first comprehensive test suite
+Bugs are tracked in the [GitHub issue tracker](https://github.com/mxbrau/SBAquaControl/issues). Currently open, hardware-related:
+- LED blink (~1 Hz) at the end of dim-down ([firmware analysis + fix in review](https://github.com/mxbrau/SBAquaControl/pull/14))
+- Web server intermittently unreachable from phones
+- Macro list loading takes 20 s or more
+
+Automated coverage (no hardware needed): `uv run python test/run_checks.py` runs BUILD (firmware compiles within budget) + PARITY (mock mirrors firmware routes) + LIVE (endpoints match the contract) + UNIT (scheduling maths on the host). See [`test/README.md`](../../test/README.md). Everything that page does not cover needs the hardware checklist in this guide.
 
 ---
 

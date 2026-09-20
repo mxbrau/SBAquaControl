@@ -1,6 +1,6 @@
 # SBAquaControl Firmware - Current Status & Roadmap
 
-**Last Updated**: 2026-01-05  
+**Last Updated**: 2026-09-20  
 **Firmware Version**: 0.5.001  
 **Status**: ✅ **STABLE** - All core features implemented
 
@@ -15,7 +15,8 @@
 - **Time Precision**: 1-second resolution (typical daylight simulation needs <1 minute)
 
 ### Memory Profile
-- **SRAM Usage**: ~50-55% at compile time
+- **SRAM Usage**: ~56% at compile time (46156 B data+bss of 81920 B; verify with `uv run python test/run_checks.py --only build`)
+- **Flash Usage**: ~39% (406008 B; same command reports it)
 - **Target Storage**: ~2.6 KB (16 channels × 32 targets × 5 bytes)
 - **Heap Available**: ~72-80 KB for runtime operations (web server, buffering, etc.)
 
@@ -98,7 +99,7 @@ pwmValue = lastTarget.Value + (dv × progress)
 4. **RAM Allocation Tuning**
    - Reduced `MAX_TARGET_COUNT_PER_CHANNEL` from 128 → 32
    - Freed: ~7.6 KB of SRAM
-   - Result: 82% → 50-55% compile-time RAM usage
+   - Result: 82% → ~56% compile-time RAM usage
 
 5. **Streaming JSON API**
    - Converted `sprintf()` calls in schedule handlers
@@ -106,17 +107,17 @@ pwmValue = lastTarget.Value + (dv × progress)
    - Affected endpoints: `/api/schedule/get`, `/api/schedule/all`, `/api/schedule/save`
 
 ### Testing Checklist
-- [x] Boot sequence stable (no crashes)
-- [x] LED schedule loading works
-- [x] Web server responds to requests
-- [x] JSON API endpoints functional
-- [x] Macro activation/stop/timer works
-- [x] Time sync (NTP/RTC/API) functional
-- [ ] Test mode operations (manual channel control)
+Covered by automation (`uv run python test/run_checks.py`: BUILD + PARITY + LIVE + UNIT):
+- [x] Firmware compiles within budget (RAM ≤70%, flash ≤80%)
+- [x] Mock mirrors all firmware routes
+- [x] All API endpoints match the firmware contract
+- [x] Scheduling maths pass on the host (interpolation, slew limiter, time parsing)
+
+Needs real hardware (see [TESTING_GUIDE.md](TESTING_GUIDE.md)):
+- [ ] Test mode operations (manual channel control, LED output)
 - [ ] Save/load configurations via web UI
 - [ ] Temperature sensor integration (if enabled)
 - [ ] OTA update process
-- [ ] Multi-user concurrent access
 - [ ] 24-hour operation without memory leaks
 
 ---
@@ -130,7 +131,7 @@ pwmValue = lastTarget.Value + (dv × progress)
 - Edge case validation (midnight rollover, rapid changes)
 - Performance profiling under load
 
-### Phase 2: UI Modernization (Q1 2026)
+### Phase 2: Enhanced Visualization (next, see [ROADMAP.md](ROADMAP.md))
 **Goal**: Implement smooth curve visualization on client side
 
 **Tasks**:
@@ -146,42 +147,19 @@ pwmValue = lastTarget.Value + (dv × progress)
 
 3. **Backend Changes**: None required (firmware stays linear)
 
-**Key Point**: Smoothing happens only on client for visualization; device always receives linear targets
+**Key Point**: Smoothing happens only on client for visualization; device always receives linear targets. Generating dense samples (e.g. 100+ targets from ~20 control points via Catmull-Rom) is part of this phase; firmware stays linear within the 32-target limit.
 
-### Phase 3: Dynamic Curve Generation (Q1-Q2 2026)
-**Goal**: Allow arbitrary smooth curves with unlimited control points
-
-**Architecture**:
-```
-User Input (20 control points)
-    ↓
-Client: Spline interpolation (e.g., Catmull-Rom)
-    ↓
-Client: Dense sampling (e.g., 100+ targets at 5-sec intervals)
-    ↓
-Send to device: Saves targets to SD card
-    ↓
-Device: Linear interpolation between dense targets
-    ↓
-Result: Smooth visual curves, simple device logic
-```
-
-**Implementation**:
-- Add spline library to `chart-manager.js` (e.g., `chaikin.js` for Chaikin curves)
-- Parameterize sampling interval (maybe 5-10 second granularity)
-- New endpoint: `/api/schedule/gen` (accepts control points, returns samples)
-- UI shows both control points and generated curve
-
-**Memory Impact**: None to firmware (stays at 32 targets max; SD card provides storage)
-
-### Phase 4: Macro System (Q2 2026)
-**Goal**: Temporary schedule overrides (movie mode, emergency shutdown, etc.)
+### Phase 3: Macro System ✅ IMPLEMENTED (v0.5.001)
+**Goal**: Temporary schedule overrides (movie mode, emergency shutdown, etc.) — done.
 
 **Features**:
 - Predefined macro buttons (Movie, Feeding, Nighttime, etc.)
 - Custom macro creation via wizard
-- 2-hour typical duration with fade-back
-- Non-volatile storage (`config/macros.json`)
+- Duration-based activation with auto-restore
+- Runtime tracking with countdown display in web UI
+- API: `/api/macro/list`, `/api/macro/get`, `/api/macro/save`, `/api/macro/activate`, `/api/macro/stop`, `/api/macro/delete`
+
+See [ARCHITECTURE.md](../../ARCHITECTURE.md) (Macro System workflow) for details.
 
 ---
 
@@ -213,7 +191,7 @@ OTA updates ... Enabled
 RTC sync ... Done
 PWM channels ... 16 channels initialized
 LED config ... 16 files loaded (32 targets each = 512 targets total)
-RAM usage: 50-55% (healthy)
+RAM usage: ~56% (healthy; verify with `uv run python test/run_checks.py --only build`)
 → Ready for proceedCycle()
 ```
 
@@ -221,20 +199,6 @@ RAM usage: 50-55% (healthy)
 - **Memory stability**: No leaks detected over extended operation
 - **Response time**: API endpoints respond <100ms typical
 - **PWM updates**: Smooth fade between targets (configurable via PWM_STEP)
-
----
-
-## Files Modified This Session
-
-1. **src/AquaControl.cpp**
-   - Removed String concatenations in error messages (lines 349, 357, 436, 441)
-   
-2. **src/AquaControl_config.h**
-   - Changed `MAX_TARGET_COUNT_PER_CHANNEL`: 128 → 32 (line 21)
-
-3. **src/Webserver.cpp**
-   - Updated schedule API handlers to use `sprintf()` (lines 658-707)
-   - Increased buffer sizes for safety (48 bytes vs 32)
 
 ---
 

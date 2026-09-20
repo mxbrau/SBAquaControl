@@ -107,12 +107,12 @@ For detailed hardware specifications, see [ARCHITECTURE.md](ARCHITECTURE.md).
 - ✅ **Test Mode** - Manual channel control (60-second timeout)
 - ✅ **Temperature Monitoring** - Optional DS18B20 sensor support
 - ✅ **OTA Updates** - Wireless firmware updates via WiFi
-- ✅ **Memory Optimized** - 50-55% RAM usage on ESP8266
+- ✅ **Memory Optimized** - ~56% RAM usage on ESP8266 (verify: `uv run python test/run_checks.py --only build`)
 
 ### Known Limitations
 - Linear interpolation only (no smooth curves)
 - Maximum 32 targets per channel
-- No timezone/DST support (UTC only)
+- Fixed timezone offset only (`TIMEZONE_OFFSET_HOURS` in `src/AquaControl_config.h`, default CET/UTC+1, applied to NTP and stored to RTC); no DST, no runtime configuration
 - No user authentication (assumes trusted network)
 
 See [ROADMAP](docs/status/ROADMAP.md) for planned enhancements.

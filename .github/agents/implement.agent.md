@@ -104,7 +104,7 @@ After all tasks complete:
 - **Tick-tock async**: [TemperatureReader::readTemperature()](../../src/AquaControl.cpp#L608)
 
 ### Memory Constraints
-- ESP8266: 160KB RAM (50-55% currently used)
+- ESP8266: 160KB RAM (~56% currently used)
 - Max targets per channel: 32 (48 bytes per target)
 - Avoid storing large strings; use char buffers
 

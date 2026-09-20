@@ -2,7 +2,7 @@
 
 **Current Version**: 0.5.001  
 **Status**: ✅ Stable with all core features implemented  
-**Next Milestone**: Phase 2 - Enhanced Visualization (Q1 2026)
+**Next Milestone**: Phase 2 - Enhanced Visualization (next)
 
 ---
 
@@ -13,7 +13,7 @@
 
 **Achievements**:
 - ✅ Fixed critical OOM crashes during boot
-- ✅ Optimized ESP8266 RAM usage (82% → 50-55%)
+- ✅ Optimized ESP8266 RAM usage (82% → ~56%)
 - ✅ Implemented streaming JSON API (no large String allocations)
 - ✅ Updated UI to show linear interpolation only (matches firmware)
 - ✅ **Implemented hybrid time synchronization** (NTP → RTC → API fallback)
@@ -29,7 +29,7 @@
 
 ---
 
-## Phase 2: Enhanced Visualization (Q1 2026)
+## Phase 2: Enhanced Visualization (next)
 
 ### Goal
 Add **optional** spline smoothing to UI while keeping firmware simple
@@ -244,101 +244,7 @@ Banner shows: "Movie Mode - 1:45 remaining"
 
 ---
 
-## Phase 4: Enhanced Visualization (Q1 2026) - NEXT
-
-### Goal (Moved from Phase 2)
-Allow arbitrary curve creation with unlimited control points
-
-### Key Feature: Macro System
-
-#### Overview
-Temporary schedule overrides for specific scenarios
-
-**Examples**:
-- 🎬 **Movie Mode**: Dim lights for 2 hours
-- 🍽️ **Feeding Time**: Increase visibility during feeding
-- 🌙 **Emergency Night**: Emergency shutdown to midnight
-- 🏥 **Hospital Mode**: Reduced intensity for stressed fish
-- ⚡ **Max Power**: Full brightness for maintenance
-
-#### Architecture
-
-```
-User clicks: [Movie Mode 🎬]
-    ↓
-Check duration: 2 hours
-    ↓
-Read movie macro schedule from SD
-    ↓
-Store active macro + start time
-    ↓
-Device prioritizes macro over normal schedule
-    ↓
-Apply macro for 2 hours
-    ↓
-Fade back to normal schedule smoothly
-    ↓
-Banner shows: "Movie Mode - 1:45 remaining"
-```
-
-#### Data Structure
-
-**File**: `config/macros.json`
-
-```json
-{
-  "macros": [
-    {
-      "id": "movie",
-      "name": "Movie Mode",
-      "description": "Dim all lights for comfortable viewing",
-      "duration": 7200,
-      "channels": [
-        {
-          "channel": 0,
-          "targets": [
-            {"time": 0, "value": 0},
-            {"time": 7200, "value": 0}
-          ]
-        },
-        {
-          "channel": 1,
-          "targets": [
-            {"time": 0, "value": 10},
-            {"time": 7200, "value": 10}
-          ]
-        }
-      ]
-    },
-    {
-      "id": "feeding",
-      "name": "Feeding Time",
-      "description": "Increase visibility for 30 minutes",
-      "duration": 1800,
-      "channels": [
-        {
-          "channel": 0,
-          "targets": [
-            {"time": 0, "value": 100},
-            {"time": 1800, "value": 100}
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### Implementation Tasks
-
-**Task 3.1**: Macro creation wizard UI (3-4 hours)  
-**Task 3.2**: Macro persistence (2-3 hours)  
-**Task 3.3**: Runtime macro activation (2-3 hours)  
-**Task 3.4**: UI banner & status display (1-2 hours)
-
----
-
-## Phase 4: Seasonal & Environmental Profiles (Q2 2026)
+## Phase 4: Seasonal & Environmental Profiles (after v0.5.x hardening)
 
 ### Goal
 Support varying light schedules based on season or conditions
@@ -380,7 +286,7 @@ Schedules: Always in local timezone
 
 ---
 
-## Phase 5: Advanced Features (Future - Beyond Q2 2026)
+## Phase 5: Advanced Features (future)
 
 ### Possible Enhancements
 
@@ -428,29 +334,29 @@ Schedules: Always in local timezone
 ## Timeline Summary
 
 ```
-January 2026: v0.5.001 (Current - STABLE)
+v0.5.001 (released January 2026 - STABLE)
 ├─ ✅ Core feature completion
 ├─ ✅ Macro timer system implemented
 ├─ ✅ Hybrid time sync implemented
 ├─ ✅ Stability & optimization
-└─ ✅ Comprehensive testing
+└─ ✅ Host unit-test harness (test/run_checks.py UNIT layer)
 
-Q1 2026: Phase 4 - Enhanced Visualization (NEXT)
+Next: Phase 2 - Enhanced Visualization
 ├─ Optional spline smoothing
 ├─ Dual mode (linear/smooth)
 └─ Client-side algorithms
 
-Q1-Q2 2026: Phase 3 - ✅ COMPLETED
+Completed: Phase 3 - Macro System
 ├─ ✅ Macro system implemented
 ├─ ✅ Temporary overrides working
 └─ ✅ Smart auto-restore
 
-Q2 2026: Phase 5 - Seasonal Support
+Later: Phase 4 - Seasonal Support
 ├─ Date-based adjustments
 ├─ Temperature feedback
 └─ Timezone support
 
-Beyond Q2 2026: Phase 6 - Advanced Features
+Future: Phase 5 - Advanced Features
 ├─ Mobile app
 ├─ AI scheduling
 ├─ Community profiles
@@ -468,18 +374,18 @@ Beyond Q2 2026: Phase 6 - Advanced Features
 - ✅ All API endpoints working
 - ✅ Auto-restore implemented
 
-### Phase 4 (Enhanced Visualization) - NEXT (Q1 2026)
-- ✅ Smooth curves render correctly
-- ✅ Sample generation completes <500ms
-- ✅ User can easily toggle modes
-- ✅ Device still executes linear interpolation
-- ✅ No firmware modifications required
+### Phase 2 (Enhanced Visualization) - NEXT
+- ⬜ Smooth curves render correctly
+- ⬜ Sample generation completes <500ms
+- ⬜ User can easily toggle modes
+- ⬜ Device still executes linear interpolation
+- ⬜ No firmware modifications required
 
-### Phase 5 (Seasonal Support) - Q2 2026
-- ✅ Seasonal adjustments intuitive
-- ✅ Temperature feedback stable (<2% error)
-- ✅ Multiple timezones supported
-- ✅ Persistence reliable
+### Phase 4 (Seasonal Support) - later
+- ⬜ Seasonal adjustments intuitive
+- ⬜ Temperature feedback stable (<2% error)
+- ⬜ Multiple timezones supported
+- ⬜ Persistence reliable
 
 ---
 
