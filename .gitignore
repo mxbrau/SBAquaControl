@@ -15,6 +15,9 @@
 /.vscode/
 /.venv/
 *.backup
+secrets.ini
+
+
 
 # Mock server runtime state - regenerated data, never commit
 /test/data/schedules.runtime.json

@@ -12,6 +12,10 @@ Copyright 2016
 #include "AquaControl.h"
 #include "OtaSerial.h"
 
+#ifndef OTA_PASSWORD
+#error "OTA_PASSWORD is not defined. Check your secrets file."
+#endif
+
 #if defined(ESP8266) && defined(USE_OTA_SERIAL)
 #define Serial OtaSerial
 #endif
@@ -756,7 +760,8 @@ void AquaControl::init()
 	// Initialize OTA (Over-The-Air) updates
 	Serial.print(F("Initializing OTA updates..."));
 	ArduinoOTA.setHostname("SBAQC");
-	ArduinoOTA.setPassword("aquarium123"); // Change this for security!
+
+	ArduinoOTA.setPassword(OTA_PASSWORD);
 
 	ArduinoOTA.onStart([]()
 					   { Serial.println(F("\nOTA: Starting update...")); });
