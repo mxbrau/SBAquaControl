@@ -375,17 +375,17 @@ Future: Phase 5 - Advanced Features
 - ✅ Auto-restore implemented
 
 ### Phase 2 (Enhanced Visualization) - NEXT
-- ✅ Smooth curves render correctly
-- ✅ Sample generation completes <500ms
-- ✅ User can easily toggle modes
-- ✅ Device still executes linear interpolation
-- ✅ No firmware modifications required
+- ⬜ Smooth curves render correctly
+- ⬜ Sample generation completes <500ms
+- ⬜ User can easily toggle modes
+- ⬜ Device still executes linear interpolation
+- ⬜ No firmware modifications required
 
 ### Phase 4 (Seasonal Support) - later
-- ✅ Seasonal adjustments intuitive
-- ✅ Temperature feedback stable (<2% error)
-- ✅ Multiple timezones supported
-- ✅ Persistence reliable
+- ⬜ Seasonal adjustments intuitive
+- ⬜ Temperature feedback stable (<2% error)
+- ⬜ Multiple timezones supported
+- ⬜ Persistence reliable
 
 ---
 

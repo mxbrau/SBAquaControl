@@ -585,7 +585,7 @@ Bugs are tracked in the [GitHub issue tracker](https://github.com/mxbrau/SBAquaC
 - Web server intermittently unreachable from phones
 - Macro list loading takes 20 s or more
 
-Automated coverage (no hardware needed): `python test/run_checks.py` runs BUILD (firmware compiles within budget) + PARITY (mock mirrors firmware routes) + LIVE (endpoints match the contract) + UNIT (scheduling maths on the host). See [`test/README.md`](../../test/README.md). Everything that page does not cover needs the hardware checklist in this guide.
+Automated coverage (no hardware needed): `uv run python test/run_checks.py` runs BUILD (firmware compiles within budget) + PARITY (mock mirrors firmware routes) + LIVE (endpoints match the contract) + UNIT (scheduling maths on the host). See [`test/README.md`](../../test/README.md). Everything that page does not cover needs the hardware checklist in this guide.
 
 ---
 

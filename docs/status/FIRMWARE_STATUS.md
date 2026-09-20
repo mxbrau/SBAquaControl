@@ -15,7 +15,7 @@
 - **Time Precision**: 1-second resolution (typical daylight simulation needs <1 minute)
 
 ### Memory Profile
-- **SRAM Usage**: ~56% at compile time (46156 B data+bss of 81920 B; verify with `python test/run_checks.py --only build`)
+- **SRAM Usage**: ~56% at compile time (46156 B data+bss of 81920 B; verify with `uv run python test/run_checks.py --only build`)
 - **Flash Usage**: ~39% (406008 B; same command reports it)
 - **Target Storage**: ~2.6 KB (16 channels × 32 targets × 5 bytes)
 - **Heap Available**: ~72-80 KB for runtime operations (web server, buffering, etc.)
@@ -107,7 +107,7 @@ pwmValue = lastTarget.Value + (dv × progress)
    - Affected endpoints: `/api/schedule/get`, `/api/schedule/all`, `/api/schedule/save`
 
 ### Testing Checklist
-Covered by automation (`python test/run_checks.py`: BUILD + PARITY + LIVE + UNIT):
+Covered by automation (`uv run python test/run_checks.py`: BUILD + PARITY + LIVE + UNIT):
 - [x] Firmware compiles within budget (RAM ≤70%, flash ≤80%)
 - [x] Mock mirrors all firmware routes
 - [x] All API endpoints match the firmware contract
@@ -131,7 +131,7 @@ Needs real hardware (see [TESTING_GUIDE.md](TESTING_GUIDE.md)):
 - Edge case validation (midnight rollover, rapid changes)
 - Performance profiling under load
 
-### Phase 2: UI Modernization (Q1 2026)
+### Phase 2: Enhanced Visualization (next, see [ROADMAP.md](ROADMAP.md))
 **Goal**: Implement smooth curve visualization on client side
 
 **Tasks**:
@@ -147,35 +147,9 @@ Needs real hardware (see [TESTING_GUIDE.md](TESTING_GUIDE.md)):
 
 3. **Backend Changes**: None required (firmware stays linear)
 
-**Key Point**: Smoothing happens only on client for visualization; device always receives linear targets
+**Key Point**: Smoothing happens only on client for visualization; device always receives linear targets. Generating dense samples (e.g. 100+ targets from ~20 control points via Catmull-Rom) is part of this phase; firmware stays linear within the 32-target limit.
 
-### Phase 3: Dynamic Curve Generation (Q1-Q2 2026)
-**Goal**: Allow arbitrary smooth curves with unlimited control points
-
-**Architecture**:
-```
-User Input (20 control points)
-    ↓
-Client: Spline interpolation (e.g., Catmull-Rom)
-    ↓
-Client: Dense sampling (e.g., 100+ targets at 5-sec intervals)
-    ↓
-Send to device: Saves targets to SD card
-    ↓
-Device: Linear interpolation between dense targets
-    ↓
-Result: Smooth visual curves, simple device logic
-```
-
-**Implementation**:
-- Add spline library to `chart-manager.js` (e.g., `chaikin.js` for Chaikin curves)
-- Parameterize sampling interval (maybe 5-10 second granularity)
-- New endpoint: `/api/schedule/gen` (accepts control points, returns samples)
-- UI shows both control points and generated curve
-
-**Memory Impact**: None to firmware (stays at 32 targets max; SD card provides storage)
-
-### Phase 4: Macro System ✅ IMPLEMENTED (v0.5.001)
+### Phase 3: Macro System ✅ IMPLEMENTED (v0.5.001)
 **Goal**: Temporary schedule overrides (movie mode, emergency shutdown, etc.) — done.
 
 **Features**:
@@ -217,7 +191,7 @@ OTA updates ... Enabled
 RTC sync ... Done
 PWM channels ... 16 channels initialized
 LED config ... 16 files loaded (32 targets each = 512 targets total)
-RAM usage: ~56% (healthy; verify with `python test/run_checks.py --only build`)
+RAM usage: ~56% (healthy; verify with `uv run python test/run_checks.py --only build`)
 → Ready for proceedCycle()
 ```
 
