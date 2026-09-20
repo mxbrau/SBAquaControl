@@ -1114,10 +1114,12 @@ bool PwmChannel::removeTargetAt(uint8_t pos)
 	}
 }
 
-// Issue #7: real minimum light level (was 1, which made the guard below
-// unsatisfiable dead code). Keep >= PWM_OFF_SNAP_COUNTS (see
-// AquaControl_config.h) so the snap-to-off and this floor stay consistent.
-#define PWM_MIN 8
+// Issue #7: minimum light level. Hardware-tested 2026-09-20: the LEDs resolve
+// single counts, so the floor is 1 (effectively no floor; the guard below only
+// fires for non-zero values below it). Raise only if a driver needs it -
+// never above PWM_OFF_SNAP_COUNTS semantics (a floor above the snap point
+// would fight the snap-to-off).
+#define PWM_MIN 1
 void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 {
 	if (TargetCount > 0)
@@ -1177,13 +1179,16 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 
 		// now calculate the graph between the two target values
 		// Issue #7: signed dt so a bad target pair cannot silently wrap to ~4.29e9
-		// (unsigned) and freeze the channel; guard against dt <= 0.
+		// (unsigned) and freeze the channel. A degenerate pair (duplicate or
+		// unsorted times) holds the last value instead of interpolating with a
+		// near-zero dt, which would produce an extremely steep slope (flicker).
+		int16_t dv = currentTarget.Value - lastTarget.Value;
 		int32_t dt = (int32_t)(currentTarget.Time - lastTarget.Time);
 		if (dt <= 0)
 		{
 			dt = 1;
+			dv = 0;
 		}
-		int16_t dv = currentTarget.Value - lastTarget.Value;
 		float m = ((float)dv) / ((float)dt) / 1000.0;
 		float n = ((float)lastTarget.Value); // -(m * ((float)0.0));
 		float deltaNow = ((float)(CurrentSecOfDay - lastTarget.Time) * 1000.0) + (float)CurrentMilli;
@@ -1261,7 +1266,9 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 			CurrentWriteValue = _PwmValue;
 			// This defines a minimum light value (Issue #7: fixed the old
 			// unsatisfiable "x > 0 && x < 1" guard, which never fired).
-			if (CurrentWriteValue != 0 && CurrentWriteValue < PWM_MIN)
+			// Only applies when the channel is meant to be on: it must not
+			// lift the intermediate slew steps of a fade that targets off.
+			if (_PwmTarget != 0 && CurrentWriteValue != 0 && CurrentWriteValue < PWM_MIN)
 			{
 				CurrentWriteValue = PWM_MIN;
 			}
