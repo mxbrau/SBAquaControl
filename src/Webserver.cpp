@@ -10,6 +10,11 @@ Copyright 2017
 */
 
 #include "AquaControl.h"
+#include "OtaSerial.h"
+
+#if defined(ESP8266) && defined(USE_OTA_SERIAL)
+#define Serial OtaSerial
+#endif
 
 #if defined(USE_WEBSERVER)
 
