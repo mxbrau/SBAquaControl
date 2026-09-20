@@ -636,7 +636,6 @@ void handleApiTestStart()
 	{
 		_aqc->_PwmChannels[i].TestMode = true;
 		_aqc->_PwmChannels[i].TestModeSetTime = _aqc->CurrentSecOfDay;
-		_aqc->_PwmChannels[i].TestRawActive = false; // TEMP-THRESHOLD-CALIB: clear raw override
 	}
 	Serial.println(F("Test mode STARTED"));
 	_Server.send(200, "application/json", "{\"status\":\"ok\",\"test_mode\":true}");
@@ -680,35 +679,8 @@ void handleApiTestUpdate()
 		// Format 1: single channel
 		int channelIdx = body.indexOf("\"channel\":");
 		int valueIdx = body.indexOf("\"value\":");
-		// TEMP-THRESHOLD-CALIB (issue #7 hardware test, REVERT before merge):
-		// optional raw PCA9685 counts {channel: N, counts: C} bypass % scaling.
-		int countsIdx = body.indexOf("\"counts\":");
 
-		if (channelIdx != -1 && countsIdx != -1)
-		{
-			int channelStart = channelIdx + 10;
-			int channelEnd = body.indexOf(',', channelStart);
-			String channelStr = body.substring(channelStart, channelEnd);
-			channelStr.trim();
-			uint8_t channel = channelStr.toInt();
-
-			int countsStart = countsIdx + 9;
-			int countsEnd = body.indexOf(',', countsStart);
-			if (countsEnd == -1)
-				countsEnd = body.indexOf('}', countsStart);
-			String countsStr = body.substring(countsStart, countsEnd);
-			countsStr.trim();
-			int counts = countsStr.toInt();
-			counts = max(0, min((int)PWM_MAX, counts));
-
-			if (channel < 6)
-			{
-				_aqc->_PwmChannels[channel].TestRawCounts = (uint16_t)counts;
-				_aqc->_PwmChannels[channel].TestRawActive = true;
-				_aqc->_PwmChannels[channel].TestModeSetTime = _aqc->CurrentSecOfDay;
-			}
-		}
-		else if (channelIdx != -1 && valueIdx != -1)
+		if (channelIdx != -1 && valueIdx != -1)
 		{
 			int channelStart = channelIdx + 10;
 			int channelEnd = body.indexOf(',', channelStart);
@@ -728,7 +700,6 @@ void handleApiTestUpdate()
 			if (channel < 6)
 			{
 				_aqc->_PwmChannels[channel].TestValue = (uint8_t)value;
-				_aqc->_PwmChannels[channel].TestRawActive = false; // TEMP-THRESHOLD-CALIB: % wins over raw
 				_aqc->_PwmChannels[channel].TestModeSetTime = _aqc->CurrentSecOfDay;
 			}
 		}
@@ -743,7 +714,6 @@ void handleApiTestExit()
 	for (uint8_t i = 0; i < 6; i++)
 	{
 		_aqc->_PwmChannels[i].TestMode = false;
-		_aqc->_PwmChannels[i].TestRawActive = false; // TEMP-THRESHOLD-CALIB: clear raw override
 	}
 	Serial.println(F("Test mode EXITED"));
 	_Server.send(200, "application/json", "{\"status\":\"ok\",\"test_mode\":false}");

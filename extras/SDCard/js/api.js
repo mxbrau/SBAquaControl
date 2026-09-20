@@ -75,15 +75,6 @@ const API = {
         });
     },
 
-    // TEMP-THRESHOLD-CALIB (issue #7 hardware test, REVERT before merge):
-    // raw PCA9685 counts 0-4095, bypasses % scaling on the firmware.
-    async updateTestRawCounts(channel, counts) {
-        return this.call(CONFIG.api.testUpdate, {
-            method: 'POST',
-            body: JSON.stringify({ channel, counts })
-        });
-    },
-
     async exitTestMode() {
         return this.call(CONFIG.api.testExit, { method: 'POST' });
     },

@@ -340,28 +340,6 @@ async function startTestMode() {
     }
 }
 
-// TEMP-THRESHOLD-CALIB (issue #7 hardware test, REVERT before merge):
-// send raw PCA9685 counts for the visible on/off threshold check.
-async function applyCalibCounts() {
-    const channel = parseInt(document.getElementById('calibChannel').value);
-    let counts = parseInt(document.getElementById('calibCounts').value);
-    if (isNaN(channel) || channel < 0 || channel > 5) {
-        alert('Kanal muss 0-5 sein');
-        return;
-    }
-    if (isNaN(counts) || counts < 0 || counts > 4095) {
-        alert('Counts müssen 0-4095 sein');
-        return;
-    }
-    try {
-        await API.updateTestRawCounts(channel, counts);
-        console.log(`🔬 Raw counts set: channel ${channel} -> ${counts} counts`);
-    } catch (error) {
-        console.error('❌ Raw counts update failed:', error);
-        alert('Fehler beim Setzen der Counts: ' + error.message);
-    }
-}
-
 // Exit test mode
 async function exitTestMode() {
     try {
