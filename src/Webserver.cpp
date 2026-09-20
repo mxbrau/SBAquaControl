@@ -948,7 +948,8 @@ static void rebuildMacroCache()
 	File dir = SD.open("/macros");
 	if (dir && dir.isDirectory())
 	{
-		while (sMacroCacheCount < MACRO_CACHE_SIZE)
+		bool sawExtra = false;
+		while (true)
 		{
 			File entry = dir.openNextFile();
 			if (!entry)
@@ -974,6 +975,16 @@ static void rebuildMacroCache()
 				continue;
 			}
 
+			if (sMacroCacheCount >= MACRO_CACHE_SIZE)
+			{
+				// More macros on the card than the list supports. This can
+				// only happen with files added outside the web UI (the save
+				// handler enforces the limit); keep walking so the warning
+				// below is accurate instead of truncating silently.
+				sawExtra = true;
+				continue;
+			}
+
 			String macroName;
 			uint32_t duration = 0;
 			if (!loadMacroMetadata(macroId, macroName, duration))
@@ -992,6 +1003,12 @@ static void rebuildMacroCache()
 			slot->duration = duration;
 		}
 		dir.close();
+		if (sawExtra)
+		{
+			Serial.print(F("WARN: "));
+			Serial.print(sMacroCacheCount);
+			Serial.println(F(" macros listed; extra macro files on the SD card exceed MACRO_CACHE_SIZE and are hidden"));
+		}
 	}
 	else
 	{
@@ -1011,7 +1028,12 @@ static void rebuildMacroCache()
 				sprintf(macroId, "macro_%03u", macroNum);
 				String macroName;
 				uint32_t duration = 0;
-				loadMacroMetadata(macroId, macroName, duration);
+				if (!loadMacroMetadata(macroId, macroName, duration))
+				{
+					// Persist what the 16-file fallback computed, so the
+					// next cache invalidation does not repeat the scan.
+					saveMacroMetadata(macroId, macroName, duration);
+				}
 				MacroEntry *slot = &sMacroCache[sMacroCacheCount++];
 				strncpy(slot->id, macroId, sizeof(slot->id) - 1);
 				slot->id[sizeof(slot->id) - 1] = '\0';
@@ -1191,6 +1213,7 @@ void handleApiMacroSave()
 	// Determine macro ID: use requested ID if it exists (edit mode), otherwise generate new one
 	String macroId;
 	char sTempFilename[50];
+	bool isNewMacro = false;
 
 	if (requestedMacroId.length() > 0 && requestedMacroId.startsWith("macro_"))
 	{
@@ -1206,6 +1229,7 @@ void handleApiMacroSave()
 		{
 			// Requested ID doesn't exist - treat as new macro with that ID
 			macroId = requestedMacroId;
+			isNewMacro = true;
 			Serial.print(F("➕ Creating new macro with requested ID: "));
 			Serial.println(macroId);
 		}
@@ -1229,8 +1253,30 @@ void handleApiMacroSave()
 		}
 
 		macroId = normalizedMacroId;
+		isNewMacro = true;
 		Serial.print(F("➕ Creating new macro: "));
 		Serial.println(macroId);
+	}
+
+	// Issue #9 (PR #17 review): the macro list cache can hold MACRO_CACHE_SIZE
+	// macros; enforce the same product limit when creating a new one so it can
+	// never silently disappear from /api/macro/list.
+	if (isNewMacro)
+	{
+		if (!sMacroCacheValid)
+		{
+			rebuildMacroCache();
+		}
+		if (sMacroCacheCount >= MACRO_CACHE_SIZE)
+		{
+			char limitBuf[96];
+			snprintf(limitBuf, sizeof(limitBuf),
+					 "{\"error\":\"macro limit reached (%u macros) - delete one first\"}",
+					 (unsigned int)MACRO_CACHE_SIZE);
+			_Server.send(400, "application/json", limitBuf);
+			Serial.println(F("Macro save rejected: limit reached"));
+			return;
+		}
 	}
 
 	// Parse macro name from request body
