@@ -17,10 +17,21 @@ sbaqc-sync-sd = "scripts.sync_sd_card:main"
 packages = ["scripts"]
 
 [dependency-groups]
-dev = ["platformio", "pre-commit", "pytest", "requests", "ruff", "ty"]
+dev = ["platformio", "pre-commit", "pytest", "pytest-cov", "requests", "ruff", "ty"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+addopts = ["--cov", "--cov-report=term-missing"]
 markers = [
     "build: firmware compile + RAM/flash budget (slow, needs PlatformIO)",
 ]
+
+[tool.coverage.run]
+# Every Python file in the repo, so never-imported files show as 0%
+# instead of vanishing from the report.
+source = ["scripts", "test"]
+
+[tool.coverage.report]
+# No fail_under: scripts/load_secrets.py is a PlatformIO SCons hook that
+# can never be imported, and test/mock_server.py is exercised out-of-process
+# (subprocess), so 100% is unreachable by design.

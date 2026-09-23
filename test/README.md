@@ -21,7 +21,21 @@ uv run pytest test/test_parity.py    # only the fast static checks (no toolchain
 
 `build` is the only marker (registered in `pyproject.toml` under
 `[tool.pytest.ini_options]`): it selects the slow firmware compile, so the
-normal loop is `pytest -m "not build"`. Everything else always runs — the
+normal loop is `pytest -m "not build"`.
+
+## Coverage
+
+Every run prints a coverage table (`--cov`, configured under
+`[tool.coverage.run]` in `pyproject.toml`) spanning all Python files in the
+repo — `scripts/` and `test/`. Two caveats when reading it:
+
+- `test/mock_server.py` shows ~0% even though the contract tests hammer it:
+  it runs out-of-process (subprocess on a private port), so in-process
+  coverage can't see it. Its real verification is the 28 contract tests.
+- `scripts/load_secrets.py` is a PlatformIO SCons hook and can never be
+  imported — 0% by design. (Same reason there is no `fail_under`.)
+
+Coverage data (`.coverage`) is git-ignored. Everything else always runs — the
 static checks parse files in milliseconds, the mock starts in a fraction of
 a second, and only the host unit layer needs PlatformIO beyond that.
 
