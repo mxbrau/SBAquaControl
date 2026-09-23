@@ -3,7 +3,7 @@
 // Mirrors src/AquaControl.cpp PwmChannel::proceedCycle (interpolation +
 // slew-rate limiter) and src/Webserver.cpp parseTimeToSeconds via the
 // dependency-free mirror in ../support/aqua_logic.h (approach 2 of
-// .github/issues/04-no-firmware-unit-tests.md). If the firmware changes,
+// GitHub issue #10). If the firmware changes,
 // update the mirror and these expectations together.
 //
 // Build/run:  pio test -e test        (no hardware needed)

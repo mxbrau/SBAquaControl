@@ -1,6 +1,6 @@
 // aqua_logic.h - dependency-free mirror of SBAquaControl's pure scheduling maths.
 //
-// Approach 2 from .github/issues/04-no-firmware-unit-tests.md: the firmware
+// Approach 2 from GitHub issue #10: the firmware
 // sources (src/AquaControl.cpp, src/Webserver.cpp) cannot compile on the host
 // because they drag in <Arduino.h>, ESP8266/SD/TimeLib headers, so the pure
 // logic is mirrored here function-for-function with NO Arduino dependencies.
