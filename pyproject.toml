@@ -4,13 +4,7 @@ version = "0.5.001"
 description = "ESP8266-based aquarium LED light controller with interactive web interface"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-    "flask>=2.3.0",
-    "flask-cors>=4.0.0",
-]
+dependencies = ["flask", "flask-cors"]
 
 [dependency-groups]
-dev = [
-    "platformio>=6.2.0",
-    "requests>=2.32.5",
-]
+dev = ["platformio", "pytest", "requests"]
