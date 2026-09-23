@@ -344,7 +344,7 @@ v0.5.001 (released January 2026 - STABLE)
 ├─ ✅ Macro timer system implemented
 ├─ ✅ Hybrid time sync implemented
 ├─ ✅ Stability & optimization
-└─ ✅ Host unit-test harness (test/run_checks.py UNIT layer)
+└─ ✅ Host unit-test harness (test/test_host_unit.py, always run by `pytest`)
 
 Next: Phase 2 - Enhanced Visualization
 ├─ Optional spline smoothing

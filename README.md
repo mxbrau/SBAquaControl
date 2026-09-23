@@ -109,7 +109,7 @@ For detailed hardware specifications, see [ARCHITECTURE.md](ARCHITECTURE.md).
 - ✅ **Test Mode** - Manual channel control (60-second timeout)
 - ✅ **Temperature Monitoring** - Optional DS18B20 sensor support
 - ✅ **OTA Updates** - Wireless firmware updates via WiFi
-- ✅ **Memory Optimized** - ~56% RAM usage on ESP8266 (verify: `uv run python test/run_checks.py --only build`)
+- ✅ **Memory Optimized** - ~56% RAM usage on ESP8266 (verify: `uv run pytest test/ -m build`)
 
 ### Known Limitations
 - Linear interpolation only (no smooth curves)

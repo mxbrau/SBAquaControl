@@ -6,23 +6,30 @@ checklist** in [`docs/status/TESTING_GUIDE.md`](../docs/status/TESTING_GUIDE.md)
 ## Run everything automated
 
 ```bash
-uv run python test/run_checks.py               # build + parity + live contract checks + host unit tests
-uv run python test/run_checks.py --skip-build  # fast loop while working on the UI
-uv run python test/run_checks.py --only live
-uv run python test/run_checks.py --only unit
+uv run pytest test/                  # everything
+uv run pytest test/ -m "not build"   # everything except the slow firmware build
+uv run pytest test/ -m build         # only the firmware build + budget check
+uv run pytest test/test_parity.py    # only the fast static checks (no toolchain)
 ```
 
-| Layer | What it proves | Needs |
+| What runs | What it proves | Needs |
 |---|---|---|
-| `BUILD` | Firmware compiles for `env:esp8266` and stays inside the RAM/Flash budget | PlatformIO |
-| `PARITY` | Every route in `src/AquaControl.cpp` also exists in the mock | — |
-| `LIVE` | A freshly started mock answers all endpoints with the firmware's status codes and field names | — |
-| `UNIT` | The firmware scheduling maths (interpolation, slew limiter, time parsing) passes on the PC | PlatformIO (`env:test`, native) |
+| Route parity (always) | Every route in `src/AquaControl.cpp` also exists in the mock (one test per route) | — |
+| Mock contract tests (always) | A freshly started mock answers all endpoints with the firmware's status codes and field names | — |
+| Host unit tests (always) | The firmware scheduling maths (interpolation, slew limiter, time parsing) passes on the PC | PlatformIO (`env:test`, native) |
+| `build` marker | Firmware compiles for `env:esp8266` and stays inside the RAM/Flash budget | PlatformIO |
 
-`LIVE` starts its own mock server on a private port, so it never collides with a
-dev server you have running, and it stops it again. Every file it touches is
-snapshotted and restored — the working tree is unchanged after a run, so the
-result is always `git status`-verifiable.
+`build` is the only marker (registered in `pyproject.toml` under
+`[tool.pytest.ini_options]`): it selects the slow firmware compile, so the
+normal loop is `pytest -m "not build"`. Everything else always runs — the
+static checks parse files in milliseconds, the mock starts in a fraction of
+a second, and only the host unit layer needs PlatformIO beyond that.
+
+The mock server starts on a private localhost port, so it never collides with a
+dev server you have running and never touches the real device; it is stopped
+again afterwards (`mock_server` fixture in `conftest.py`). Every file it touches
+is snapshotted and restored (`clean_tree` fixture) — the working tree is
+unchanged after a run, so the result is always `git status`-verifiable.
 
 What is **not** automated (real hardware required): LED output and PWM/PCA9685
 behaviour, DS18B20 readings, OTA updates, WiFi reachability, 24-hour soak.
@@ -32,8 +39,12 @@ behaviour, DS18B20 readings, OTA updates, WiFi reachability, 24-hour soak.
 | File | Purpose |
 |---|---|
 | `mock_server.py` | Flask stand-in for the ESP8266 webserver. Its contract mirrors `src/Webserver.cpp` one-to-one — treat a divergence as a bug in one of the two. |
-| `test_api_parity.py` | Route/contract guard. Static: parses `_Server.on(...)` vs `@app.route(...)`. `--live`: exercises a running mock. |
-| `run_checks.py` | Runs all four layers and prints a summary. |
+| `test_api_parity.py` | Route/contract library (imported by the tests). Static: parses `_Server.on(...)` vs `@app.route(...)`. Standalone: `--live` smoke-tests a running mock. |
+| `conftest.py` | `mock_server` fixture (private-port mock per session), `clean_tree` fixture (snapshot/restore), `pio_command()` helper. |
+| `test_parity.py` | Always run: one test per firmware route — fails if the mock lacks it. |
+| `test_live_contract.py` | Always run: one test per `live_checks()` row plus the multipart `/upload` check. |
+| `test_firmware_build.py` | `build`: `pio run -e esp8266 -t size` plus the RAM/Flash budget asserts. |
+| `test_host_unit.py` | Always run: executes `pio test -e test`, asserts every case passed. |
 | `gen_schedule_fixture.py` | Regenerates `data/schedules.json`, the realistic seed data. |
 | `data/schedules.json` | Tracked, read-only seed: 6 channels, realistic photoperiod curves, max 32 targets (the device limit), plus edge cases (plateau, 32-point cap, midnight wrap). |
 | `data/schedules.runtime.json` | Git-ignored runtime state the mock saves to. Delete it to reset to the seed. |
@@ -51,10 +62,10 @@ Edit files in `extras/SDCard/` and reload. Changes you make in the UI persist to
 
 Add a row to `live_checks()` in `test_api_parity.py`:
 `(label, method, path, body, expected_status, required_fields)`.
-The runner and the standalone script pick it up automatically.
+The parametrized contract tests and the standalone script pick it up automatically.
 
 If the firmware gains an endpoint, add it to the mock **and** to `live_checks()` —
-`BUILD`-time parity will fail until you do.
+the parity tests will fail until you do.
 
 ## Adding a firmware test
 

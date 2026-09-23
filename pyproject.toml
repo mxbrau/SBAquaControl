@@ -18,3 +18,9 @@ packages = ["scripts"]
 
 [dependency-groups]
 dev = ["platformio", "pytest", "requests"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+markers = [
+    "build: firmware compile + RAM/flash budget (slow, needs PlatformIO)",
+]

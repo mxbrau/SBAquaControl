@@ -15,7 +15,7 @@
 - **Time Precision**: 1-second resolution (typical daylight simulation needs <1 minute)
 
 ### Memory Profile
-- **SRAM Usage**: ~56% at compile time (46156 B data+bss of 81920 B; verify with `uv run python test/run_checks.py --only build`)
+- **SRAM Usage**: ~56% at compile time (46156 B data+bss of 81920 B; verify with `uv run pytest test/ -m build`)
 - **Flash Usage**: ~39% (406008 B; same command reports it)
 - **Target Storage**: ~2.6 KB (16 channels × 32 targets × 5 bytes)
 - **Heap Available**: ~72-80 KB for runtime operations (web server, buffering, etc.)
@@ -107,7 +107,7 @@ pwmValue = lastTarget.Value + (dv × progress)
    - Affected endpoints: `/api/schedule/get`, `/api/schedule/all`, `/api/schedule/save`
 
 ### Testing Checklist
-Covered by automation (`uv run python test/run_checks.py`: BUILD + PARITY + LIVE + UNIT):
+Covered by automation (`uv run pytest test/` — mock contract, route parity, host unit tests, firmware build; `-m "not build"` skips the slow build):
 - [x] Firmware compiles within budget (RAM ≤70%, flash ≤80%)
 - [x] Mock mirrors all firmware routes
 - [x] All API endpoints match the firmware contract
@@ -191,7 +191,7 @@ OTA updates ... Enabled
 RTC sync ... Done
 PWM channels ... 16 channels initialized
 LED config ... 16 files loaded (32 targets each = 512 targets total)
-RAM usage: ~56% (healthy; verify with `uv run python test/run_checks.py --only build`)
+RAM usage: ~56% (healthy; verify with `uv run pytest test/ -m build`)
 → Ready for proceedCycle()
 ```
 
