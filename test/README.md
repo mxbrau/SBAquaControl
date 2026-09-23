@@ -33,7 +33,7 @@ behaviour, DS18B20 readings, OTA updates, WiFi reachability, 24-hour soak.
 |---|---|
 | `mock_server.py` | Flask stand-in for the ESP8266 webserver. Its contract mirrors `src/Webserver.cpp` one-to-one — treat a divergence as a bug in one of the two. |
 | `test_api_parity.py` | Route/contract guard. Static: parses `_Server.on(...)` vs `@app.route(...)`. `--live`: exercises a running mock. |
-| `run_checks.py` | Runs all three layers and prints a summary. |
+| `run_checks.py` | Runs all four layers and prints a summary. |
 | `gen_schedule_fixture.py` | Regenerates `data/schedules.json`, the realistic seed data. |
 | `data/schedules.json` | Tracked, read-only seed: 6 channels, realistic photoperiod curves, max 32 targets (the device limit), plus edge cases (plateau, 32-point cap, midnight wrap). |
 | `data/schedules.runtime.json` | Git-ignored runtime state the mock saves to. Delete it to reset to the seed. |

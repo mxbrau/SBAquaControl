@@ -1,10 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "sbaquacontrol"
 version = "0.5.001"
 description = "ESP8266-based aquarium LED light controller with interactive web interface"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["flask", "flask-cors"]
+dependencies = ["flask", "flask-cors", "requests"]
+
+[project.scripts]
+sbaqc-sync-sd = "scripts.sync_sd_card:main"
+
+[tool.setuptools]
+packages = ["scripts"]
 
 [dependency-groups]
 dev = ["platformio", "pytest", "requests"]

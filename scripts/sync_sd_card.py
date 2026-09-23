@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Sync local SD card files to ESP8266 via HTTP upload endpoint
-Usage: python sync_sd_card.py <esp_ip> [--exclude pattern1,pattern2,...]
-Example: python sync_sd_card.py 192.168.103.8
+Usage: sbaqc-sync-sd <esp_ip> [--exclude pattern1,pattern2,...]
+Example: sbaqc-sync-sd 192.168.103.8
 """
 
 import os
@@ -83,18 +83,26 @@ def sync_sd_card(esp_ip, exclude_patterns=None):
         sys.exit(1)
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(
-            "Usage: python sync_sd_card.py <esp_ip> [--exclude pattern1,pattern2,...]"
-        )
-        print("Example: python sync_sd_card.py 192.168.103.8")
-        sys.exit(1)
+def main(argv=None):
+    """Console-script entry point (see [project.scripts] in pyproject.toml)."""
+    args = argv if argv is not None else sys.argv[1:]
+    if len(args) < 1:
+        print("Usage: sbaqc-sync-sd <esp_ip> [--exclude pattern1,pattern2,...]")
+        print("Example: sbaqc-sync-sd 192.168.103.8")
+        return 1
 
-    esp_ip = sys.argv[1]
+    esp_ip = args[0]
     exclude = []
 
-    if len(sys.argv) > 2 and sys.argv[2] == "--exclude":
-        exclude = sys.argv[3].split(",")
+    if len(args) > 1 and args[1] == "--exclude":
+        if len(args) < 3:
+            print("Error: --exclude needs a comma-separated pattern list")
+            return 1
+        exclude = args[2].split(",")
 
     sync_sd_card(esp_ip, exclude)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
