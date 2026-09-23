@@ -85,11 +85,11 @@ function createChannelControls(containerId = 'channelControls', includeAllChanne
                 <span class="channel-value" id="value-${containerId}-${i}">0%</span>
             </div>
             <div class="slider-container">
-                <input type="range" 
-                       class="slider" 
+                <input type="range"
+                       class="slider"
                        id="slider-${containerId}-${i}"
-                       min="0" 
-                       max="100" 
+                       min="0"
+                       max="100"
                        value="0"
                        style="--channel-color: ${CONFIG.channelColors[i]}">
             </div>
@@ -825,18 +825,18 @@ async function saveChannelConfig() {
 
     try {
         await API.saveChannelConfig(channels);
-        
+
         // Update CONFIG
         CONFIG.channelNames = channels.map(ch => ch.name);
         CONFIG.channelColors = channels.map(ch => ch.color);
-        
+
         // Refresh UI
         createChannelControls();
         if (mainChart) {
             mainChart.init(); // Reinitialize chart with new colors
             await loadSchedules(); // Reload schedules to update chart
         }
-        
+
         closeChannelConfigEditor();
         alert('Kanal-Konfiguration erfolgreich gespeichert!');
         console.log('✅ Channel config saved');

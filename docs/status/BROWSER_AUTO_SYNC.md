@@ -1,6 +1,6 @@
 # Browser Auto-Sync Time Feature
 
-**Status**: ✅ IMPLEMENTED  
+**Status**: ✅ IMPLEMENTED
 **Last Updated**: January 5, 2026
 
 ## Overview
@@ -33,7 +33,7 @@ async function checkAndSyncTime() {
     try {
         const response = await fetch('/api/status');
         const status = await response.json();
-        
+
         // If device needs time sync, send browser time
         if (status.needs_time_sync === true) {
             console.log('Device needs time sync, sending browser time...');
@@ -52,7 +52,7 @@ async function sendBrowserTime() {
         minute: now.getMinutes(),
         second: now.getSeconds()
     };
-    
+
     try {
         const response = await fetch('/api/time/set', {
             method: 'POST',
@@ -61,10 +61,10 @@ async function sendBrowserTime() {
             },
             body: JSON.stringify(timeData)
         });
-        
+
         const result = await response.json();
         console.log('Time sync result:', result);
-        
+
         if (response.ok) {
             console.log('✅ Browser auto-synced time to device');
             // Optionally show a notification to the user

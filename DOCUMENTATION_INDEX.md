@@ -1,6 +1,6 @@
 # SBAquaControl Documentation Index
 
-**Last Updated**: January 5, 2026  
+**Last Updated**: January 5, 2026
 **Firmware Version**: 0.5.001
 
 This index helps you navigate the SBAquaControl documentation and find the information you need quickly.
@@ -223,5 +223,5 @@ Please update it following the standards above, or open an issue describing what
 
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 1.0
 **Maintained By**: SBAquaControl Development Team

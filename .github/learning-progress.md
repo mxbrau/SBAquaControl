@@ -1,6 +1,6 @@
 # Learning Progress Tracker
 
-**Last updated**: 2026-01-02 by system initialization  
+**Last updated**: 2026-01-02 by system initialization
 **Confidence scale**: 1=too deep/advanced | 3=about right | 5=too basic/incomplete
 
 ---

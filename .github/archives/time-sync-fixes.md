@@ -1,7 +1,7 @@
 # Time Sync Implementation - Fixes Applied
 
-**Date:** 2026-01-03  
-**Status:** Ready for Review  
+**Date:** 2026-01-03
+**Status:** Ready for Review
 **Related Plan:** [time-sync-plan.md](time-sync-plan.md)
 
 ## Issues Fixed
@@ -49,7 +49,7 @@ if (rtcTime < 1672531200UL) {  // Before Jan 1, 2023
 **Usage:**
 ```ini
 # In platformio.ini, add:
-build_flags = 
+build_flags =
     -D NTP_SERVER=\"192.168.1.1\"
     -D NTP_FALLBACK_SERVER=\"time.google.com\"
 ```

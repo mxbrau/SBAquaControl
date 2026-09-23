@@ -5,10 +5,10 @@ Usage: sbaqc-sync-sd <esp_ip> [--exclude pattern1,pattern2,...]
 Example: sbaqc-sync-sd 192.168.103.8
 """
 
-import os
 import sys
-import requests
 from pathlib import Path
+
+import requests
 
 
 def sync_sd_card(esp_ip, exclude_patterns=None):
@@ -72,8 +72,8 @@ def sync_sd_card(esp_ip, exclude_patterns=None):
                     print(f"✗ {remote_path}: HTTP {response.status_code}")
                     failed += 1
 
-        except Exception as e:
-            print(f"✗ {remote_path}: {str(e)}")
+        except Exception as e:  # noqa: BLE001 — per-file error is counted, sync continues
+            print(f"✗ {remote_path}: {e!s}")
             failed += 1
 
     print("-" * 60)

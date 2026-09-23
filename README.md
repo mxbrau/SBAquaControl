@@ -59,7 +59,7 @@ This allows you to develop and test the web UI, create HTML/JavaScript files, an
    ```
 
 2. **Enable OTA for Wireless Updates**
-    
+
    After the initial USB upload, you can update the firmware wirelessly:
    ```bash
    pio run -e esp8266_ota --target upload
@@ -98,7 +98,7 @@ For detailed hardware specifications, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 📝 Current Status
 
-**Version**: 0.5.001  
+**Version**: 0.5.001
 **Last Updated**: 2026-01-05
 
 ### Implemented Features

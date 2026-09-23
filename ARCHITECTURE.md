@@ -179,7 +179,7 @@ Boot sequence attempts time sync in priority order:
   1. NTP sync (if USE_NTP defined, 2-second timeout)
   2. RTC sync (DS3231 hardware clock)
   3. Manual sync via /api/time/set (fallback)
-  
+
 Sync status tracked in _LastTimeSyncSource enum:
   - TimeSyncSource::Ntp (successful NTP)
   - TimeSyncSource::Rtc (RTC fallback)

@@ -1,7 +1,7 @@
 # SBAquaControl Firmware - Current Status & Roadmap
 
-**Last Updated**: 2026-09-20  
-**Firmware Version**: 0.5.001  
+**Last Updated**: 2026-09-20
+**Firmware Version**: 0.5.001
 **Status**: ✅ **STABLE** - All core features implemented
 
 ---
@@ -211,7 +211,7 @@ RAM usage: ~56% (healthy; verify with `uv run pytest test/ -m build`)
 
 ---
 
-**Next Steps**: 
+**Next Steps**:
 1. Run comprehensive functionality tests
 2. Document any issues encountered
 3. Plan Phase 2 UI updates

@@ -6,7 +6,7 @@
 
 **Option A: VS Code Extension (Recommended)**
 1. Open VS Code
-2. Install extension: "PlatformIO IDE" 
+2. Install extension: "PlatformIO IDE"
 3. Restart VS Code
 4. Done! PlatformIO is ready
 

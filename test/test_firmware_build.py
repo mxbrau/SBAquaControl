@@ -15,7 +15,6 @@ import re
 import subprocess
 
 import pytest
-
 from conftest import REPO, pio_command
 
 pytestmark = pytest.mark.build
@@ -43,6 +42,7 @@ def test_firmware_compiles_within_budget():
         cwd=REPO,
         capture_output=True,
         text=True,
+        check=False,  # returncode is asserted below
     )
     out = proc.stdout + proc.stderr
     assert proc.returncode == 0 and "SUCCESS" in out, (
@@ -59,7 +59,9 @@ def test_firmware_compiles_within_budget():
         ),
         None,
     )
-    assert size_line is not None, "could not find the firmware.elf size line in the build output"
+    assert size_line is not None, (
+        "could not find the firmware.elf size line in the build output"
+    )
 
     text, data, bss = (int(v) for v in size_line.split()[:3])
     ram_pct = 100.0 * (data + bss) / RAM_TOTAL_BYTES
@@ -68,7 +70,9 @@ def test_firmware_compiles_within_budget():
         f"\nstatic RAM {ram_pct:.1f}% ({data + bss}B data+bss), "
         f"flash {flash_pct:.1f}% ({text}B)"
     )
-    assert ram_pct <= RAM_BUDGET_PCT, f"static RAM {ram_pct:.1f}% exceeds {RAM_BUDGET_PCT}% budget"
+    assert ram_pct <= RAM_BUDGET_PCT, (
+        f"static RAM {ram_pct:.1f}% exceeds {RAM_BUDGET_PCT}% budget"
+    )
     assert flash_pct <= FLASH_BUDGET_PCT, (
         f"flash {flash_pct:.1f}% exceeds {FLASH_BUDGET_PCT}% budget"
     )

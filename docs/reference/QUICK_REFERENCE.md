@@ -1,5 +1,5 @@
 # SBAquaControl Quick Reference
-**Version**: 0.5.001  
+**Version**: 0.5.001
 **Purpose**: Fast lookup for common tasks
 
 ---
@@ -214,7 +214,7 @@ curl -X POST http://192.168.103.8/api/schedule/target/add \
 5. Check `/api/status` for `macro_active` field
 
 ### Issue: Chart shows no data
-**Fix**: 
+**Fix**:
 1. Verify SD card has schedule files: `ledch_00.cfg`, `ledch_01.cfg`, etc.
 2. Check browser console (F12) for JavaScript errors
 3. Verify API returns data: `GET /api/schedule/all`
@@ -509,6 +509,6 @@ pio run -e esp8266_ota --target upload
 
 ---
 
-**Version**: 1.0  
-**Last Updated**: 2025-12-30  
+**Version**: 1.0
+**Last Updated**: 2025-12-30
 **Status**: Ready for Reference

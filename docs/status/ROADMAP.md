@@ -1,7 +1,7 @@
 # SBAquaControl Development Roadmap
 
-**Current Version**: 0.5.001  
-**Status**: ✅ Stable with all core features implemented  
+**Current Version**: 0.5.001
+**Status**: ✅ Stable with all core features implemented
 **Next Milestone**: Phase 2 - Enhanced Visualization (next)
 
 ---
@@ -177,7 +177,7 @@ void handleApiScheduleGenerate() {
     // Request format: {channel, controlPoints, samplesPerSegment}
     // Perform spline computation
     // Return densified targets
-    
+
     // Alternative: Offload to client only (no firmware changes needed)
 }
 ```
@@ -463,6 +463,6 @@ Guidelines for future developers:
 
 ---
 
-**Document Version**: 2.0  
-**Last Updated**: 2026-01-05  
+**Document Version**: 2.0
+**Last Updated**: 2026-01-05
 **Status**: Phase 3 completed, Phase 4 ready for planning

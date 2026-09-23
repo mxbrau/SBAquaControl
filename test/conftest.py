@@ -22,7 +22,6 @@ import urllib.error
 import urllib.request
 
 import pytest
-
 import test_api_parity as parity
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -62,7 +61,10 @@ def mock_server():
     port = free_port()
     base = f"http://127.0.0.1:{port}"
     env = dict(os.environ, MOCK_PORT=str(port), MOCK_DEBUG="0")
-    log = open(os.path.join(HERE, ".mock_server.log"), "w", encoding="utf-8")
+    # Closed in the fixture's finally block (must outlive Popen) — noqa: SIM115
+    log = open(  # noqa: SIM115
+        os.path.join(HERE, ".mock_server.log"), "w", encoding="utf-8"
+    )
     proc = subprocess.Popen(
         [sys.executable, os.path.join(HERE, "mock_server.py")],
         cwd=REPO,
@@ -72,7 +74,9 @@ def mock_server():
     )
     try:
         if not wait_for_server(base):
-            pytest.fail(f"mock server did not come up on {base} (see test/.mock_server.log)")
+            pytest.fail(
+                f"mock server did not come up on {base} (see test/.mock_server.log)"
+            )
         yield base
     finally:
         proc.terminate()

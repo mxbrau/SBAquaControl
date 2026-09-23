@@ -10,7 +10,6 @@ Fast: pure file parsing, no server, no toolchain. Always run.
 """
 
 import pytest
-
 import test_api_parity as parity
 
 

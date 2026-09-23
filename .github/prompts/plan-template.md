@@ -72,7 +72,7 @@ Break implementation into checklist items. Each should be ~30-60 minutes of work
 - [ ] Add `MacroState` struct to [AquaControl.h](../../src/AquaControl.h#L100)
   - Fields: `active`, `startTime`, `duration`, `originalTargets[]`
   - Location: After `PwmChannel` class definition
-  
+
 - [ ] Add member variable to `AquaControl` class
   - `MacroState _activeMacro;`
   - Initialize in constructor
@@ -158,14 +158,14 @@ Break implementation into checklist items. Each should be ~30-60 minutes of work
 
 ## Success Criteria
 
-✅ All tasks in "Implementation Tasks" completed  
-✅ No compiler errors or warnings (esp8266 target)  
-✅ Manual tests pass (lights change, restore, stop works)  
-✅ Memory usage doesn't exceed +5KB  
-✅ Response time <100ms for API calls  
-✅ Code follows naming conventions and patterns  
-✅ No `String` concatenation in new code  
-✅ Ready for code review  
+✅ All tasks in "Implementation Tasks" completed
+✅ No compiler errors or warnings (esp8266 target)
+✅ Manual tests pass (lights change, restore, stop works)
+✅ Memory usage doesn't exceed +5KB
+✅ Response time <100ms for API calls
+✅ Code follows naming conventions and patterns
+✅ No `String` concatenation in new code
+✅ Ready for code review
 
 ---
 

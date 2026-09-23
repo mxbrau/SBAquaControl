@@ -13,7 +13,6 @@ no toolchain.
 import os
 
 import pytest
-
 import test_api_parity as parity
 
 
@@ -30,9 +29,7 @@ def _check(label, method, path, body, expected, keys, base):
         pytest.fail(f"{label}: response was not JSON ({payload!r})")
 
 
-@pytest.mark.parametrize(
-    "label,method,path,body,expected,keys", parity.live_checks()
-)
+@pytest.mark.parametrize("label,method,path,body,expected,keys", parity.live_checks())
 def test_endpoint(label, method, path, body, expected, keys, mock_server, clean_tree):
     _check(label, method, path, body, expected, keys, mock_server)
 
@@ -45,10 +42,12 @@ def test_upload(mock_server, clean_tree):
         body={"path": "data/__pytest_upload.tmp"},
         files={"file": ("__pytest_upload.tmp", b"pytest")},
     )
-    assert status == 200 and isinstance(payload, dict) and payload.get("success") is True, (
-        f"upload failed: status {status}, payload {payload!r}"
+    assert (
+        status == 200 and isinstance(payload, dict) and payload.get("success") is True
+    ), f"upload failed: status {status}, payload {payload!r}"
+    uploaded = os.path.join(
+        parity.REPO, "extras", "SDCard", "data", "__pytest_upload.tmp"
     )
-    uploaded = os.path.join(parity.REPO, "extras", "SDCard", "data", "__pytest_upload.tmp")
     if os.path.exists(uploaded):
         os.remove(uploaded)
     parent = os.path.dirname(uploaded)

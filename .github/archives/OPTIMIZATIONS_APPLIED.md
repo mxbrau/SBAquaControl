@@ -52,7 +52,7 @@ int minute = parseTimeField("\"minute\":");
 int second = parseTimeField("\"second\":");
 ```
 
-**Impact:** 
+**Impact:**
 - Reduced code: 58 lines → 19 lines (-68%)
 - Single validation point (simplified error messages)
 - Easier to maintain (fix once, applied to all fields)
@@ -66,7 +66,7 @@ int second = parseTimeField("\"second\":");
 #endif
 ```
 
-**Impact:** 
+**Impact:**
 - User can adjust offset compile-time for different timezones
 - Clear documentation for DST changes
 - No runtime overhead (compile-time constant)
@@ -91,4 +91,3 @@ int second = parseTimeField("\"second\":");
 - `src/AquaControl_config.h` - Timezone configuration
 - `src/AquaControl.cpp` - Timezone offset application
 - `src/Webserver.cpp` - Consolidated status logic, optimized parsing
-
