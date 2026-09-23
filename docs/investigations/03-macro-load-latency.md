@@ -242,4 +242,4 @@ Target: macro page load < 500 ms. If it is still slow, the remaining cost is in
 * `extras/SDCard/js/app.js` L200-230 (`loadMacros`, N+1), L308 + L652 (re-load after save/delete)
 * `extras/SDCard/js/config.js` (`statusUpdateInterval: 1000`), `extras/SDCard/js/api.js`
 * `docs/design/MACRO_REFACTORING.md`, `ARCHITECTURE.md` ("Memory Management" — avoid `String`
-  in SD paths), `.github/plans/macro-optimization-final-review.md`
+  in SD paths)
