@@ -30,6 +30,9 @@ markers = [
 # Every Python file in the repo, so never-imported files show as 0%
 # instead of vanishing from the report.
 source = ["scripts", "test"]
+# Store relative paths so the coverage-comment CI action can match the
+# .coverage file against the checked-out tree on the runner.
+relative_files = true
 
 [tool.coverage.report]
 # No fail_under: scripts/load_secrets.py is a PlatformIO SCons hook that

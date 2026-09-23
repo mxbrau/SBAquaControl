@@ -1,0 +1,65 @@
+# Runs the full host test-suite (all 54 tests, build marker included)
+# with coverage and reports it via python-coverage-comment-action:
+# PR comments on pull requests, badge + dashboard data on master.
+name: pytest
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  test:
+    name: pytest py${{ matrix.python-version }} & report coverage
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+    permissions:
+      pull-requests: write # publish/update the coverage comment on PRs
+      contents: write # push coverage data to the data branch
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up uv and Python ${{ matrix.python-version }}
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Cache PlatformIO toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Provide dummy secrets.ini for the firmware build
+        # Same shape as the local dummy (see test/README.md): the file is
+        # git-ignored and only feeds -DOTA_PASSWORD at compile time.
+        run: printf 'OTA_PASSWORD=ci-build-only\n' > secrets.ini
+
+      - name: Install dependencies
+        # --locked: install exactly the versions in uv.lock and fail
+        # if pyproject.toml and uv.lock are out of sync.
+        run: uv sync --dev --locked
+
+      - name: Run pytest with coverage
+        run: uv run pytest test/
+
+      - name: Coverage comment
+        # Report once (from 3.10) so the six matrix jobs don't post
+        # six duplicate comments / badge writes.
+        if: matrix.python-version == '3.10'
+        id: coverage_comment
+        uses: py-cov-action/python-coverage-comment-action@v4.1
+        with:
+          GITHUB_TOKEN: ${{ github.token }}

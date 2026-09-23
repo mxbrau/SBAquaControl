@@ -1,5 +1,7 @@
 # SBAquaControl
 
+[![Coverage](https://raw.githubusercontent.com/mxbrau/SBAquaControl/python-coverage-comment-action-data/badge.svg)](https://github.com/mxbrau/SBAquaControl/tree/python-coverage-comment-action-data)
+
 Schullebernd Aqua Control ist eine WLAN Aquarium Lichtsteuerung (Tageslichtsimulation) für LED Beleuchtungen.
 
 Eine komplette Beschreibung zum Aufbau der Steuerung sowie zum Selbstbau einer Aquarium LED Beleuchtung ist auf http://schullebernd.de/ zu finden.
