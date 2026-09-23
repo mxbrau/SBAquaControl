@@ -17,7 +17,7 @@ sbaqc-sync-sd = "scripts.sync_sd_card:main"
 packages = ["scripts"]
 
 [dependency-groups]
-dev = ["platformio", "pytest", "requests"]
+dev = ["platformio", "pre-commit", "pytest", "requests", "ruff", "ty"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
