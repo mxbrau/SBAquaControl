@@ -1681,7 +1681,27 @@ void handleApiDebug()
 		}
 	}
 
-	_Server.sendContent("}}"); // Close macros object AND main JSON object
+	_Server.sendContent("}}"); // Close macros object
+
+	// Add per-channel PWM diagnostics: what the schedule/macro/test-mode logic
+	// actually asked for vs. what was last written to the PWM device.
+	_Server.sendContent(",\"channels\":[");
+	for (uint8_t ch = 0; ch < PWM_CHANNELS; ch++)
+	{
+		if (ch > 0)
+			_Server.sendContent(",");
+		PwmChannel &pwm = _aqc->_PwmChannels[ch];
+		sprintf(buf, "{\"ch\":%u,\"target\":%d,\"value\":%d,\"write\":%u,\"test_mode\":%s,\"test_value\":%u,\"target_count\":%u}",
+				(unsigned)ch,
+				(int)pwm._PwmTarget,
+				(int)pwm._PwmValue,
+				(unsigned)pwm.CurrentWriteValue,
+				pwm.TestMode ? "true" : "false",
+				(unsigned)pwm.TestValue,
+				(unsigned)pwm.TargetCount);
+		_Server.sendContent(buf);
+	}
+	_Server.sendContent("]}"); // Close channels array AND main JSON object
 
 	// Also log to serial
 	Serial.print(F("DEBUG: Free="));

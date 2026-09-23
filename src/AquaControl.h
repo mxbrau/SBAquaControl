@@ -203,6 +203,8 @@ private:
 	int16_t _PwmValue = 1;
 
 public:
+	// Allow the debug endpoint to report live PWM state without guessing.
+	friend void handleApiDebug();
 	uint8_t ChannelAddress; // Contains the address or pin for setting the pwm value
 	Target Targets[MAX_TARGET_COUNT_PER_CHANNEL];
 	uint8_t TargetCount;
