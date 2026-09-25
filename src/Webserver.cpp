@@ -1605,6 +1605,7 @@ void handleApiDebug()
 	_Server.send(200, "application/json", "");
 
 	char buf[16];
+	char bigbuf[160]; // per-channel PWM lines are ~110 chars (issue #26)
 
 	_Server.sendContent("{\"free_heap\":");
 	sprintf(buf, "%lu", (unsigned long)freeHeap);
@@ -1691,7 +1692,7 @@ void handleApiDebug()
 		if (ch > 0)
 			_Server.sendContent(",");
 		PwmChannel &pwm = _aqc->_PwmChannels[ch];
-		sprintf(buf, "{\"ch\":%u,\"target\":%d,\"value\":%d,\"write\":%u,\"test_mode\":%s,\"test_value\":%u,\"target_count\":%u}",
+		sprintf(bigbuf, "{\"ch\":%u,\"target\":%d,\"value\":%d,\"write\":%u,\"test_mode\":%s,\"test_value\":%u,\"target_count\":%u}",
 				(unsigned)ch,
 				(int)pwm._PwmTarget,
 				(int)pwm._PwmValue,
@@ -1699,7 +1700,7 @@ void handleApiDebug()
 				pwm.TestMode ? "true" : "false",
 				(unsigned)pwm.TestValue,
 				(unsigned)pwm.TargetCount);
-		_Server.sendContent(buf);
+		_Server.sendContent(bigbuf);
 	}
 	_Server.sendContent("]}"); // Close channels array AND main JSON object
 
