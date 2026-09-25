@@ -1682,7 +1682,7 @@ void handleApiDebug()
 		}
 	}
 
-	_Server.sendContent("}}"); // Close macros object
+	_Server.sendContent("}"); // Close macros object (root object stays open)
 
 	// Add per-channel PWM diagnostics: what the schedule/macro/test-mode logic
 	// actually asked for vs. what was last written to the PWM device.
