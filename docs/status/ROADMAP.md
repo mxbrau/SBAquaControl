@@ -298,6 +298,11 @@ Schedules: Always in local timezone
 - **Community Schedule Sharing**: Download/share tested profiles
 - **Mobile App**: iOS/Android native app for control on-the-go
 - **Cloud Integration**: Remote monitoring across multiple systems
+- **Gradient Animation Effects**: smooth color transitions beyond linear fades (from retired MASTERPLAN)
+- **Multi-User Authentication**: password/role separation for the web UI (from retired MASTERPLAN)
+- **HTTPS Support**: TLS for the ESP8266 web server (from retired MASTERPLAN)
+- **16-Channel UI**: manage all 16 firmware channels, not just the 6 visible today (from retired MASTERPLAN)
+- **Macro Persistence Across Power Loss**: resume interrupted macros after reboot (from retired MASTERPLAN)
 
 ---
 

@@ -29,3 +29,17 @@ secrets.ini
 # Test harness artifacts
 __pycache__/
 /test/.mock_server.log
+
+# Python packaging artifacts (entry points now install the scripts/ package)
+*.egg-info/
+build/
+dist/
+
+# Coverage artifacts (pytest --cov writes .coverage on every run)
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+.ruff_cache
+.pytest_cache
