@@ -1,16 +1,40 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "sbaquacontrol"
 version = "0.5.001"
 description = "ESP8266-based aquarium LED light controller with interactive web interface"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-    "flask>=2.3.0",
-    "flask-cors>=4.0.0",
-]
+dependencies = ["flask", "flask-cors", "requests"]
+
+[project.scripts]
+sbaqc-sync-sd = "scripts.sync_sd_card:main"
+
+[tool.setuptools]
+packages = ["scripts"]
 
 [dependency-groups]
-dev = [
-    "platformio>=6.2.0",
-    "requests>=2.32.5",
+dev = ["platformio", "pre-commit", "pytest", "pytest-cov", "requests", "ruff", "ty"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = ["--cov", "--cov-report=term-missing"]
+markers = [
+    "build: firmware compile + RAM/flash budget (slow, needs PlatformIO)",
 ]
+
+[tool.coverage.run]
+# Every Python file in the repo, so never-imported files show as 0%
+# instead of vanishing from the report.
+source = ["scripts", "test"]
+# Store relative paths so the coverage-comment CI action can match the
+# .coverage file against the checked-out tree on the runner.
+relative_files = true
+
+[tool.coverage.report]
+# No fail_under: scripts/load_secrets.py is a PlatformIO SCons hook that
+# can never be imported, and test/mock_server.py is exercised out-of-process
+# (subprocess), so 100% is unreachable by design.

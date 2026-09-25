@@ -55,7 +55,7 @@ This implementation fixes macro activation UI feedback issues and NaN duration d
 **Objective:** Verify macro activates and UI reflects active state
 
 1. Click on the macro card created in Test 1
-2. **Expected:** 
+2. **Expected:**
    - Macro banner appears at top of page
    - Countdown timer starts from "2:30:00"
    - Serial log shows: `🎬 Macro activated: macro_001, duration: 9000s`
@@ -91,7 +91,7 @@ This implementation fixes macro activation UI feedback issues and NaN duration d
 **Objective:** Verify macro editing preserves duration
 
 1. Click "Edit" button on existing macro
-2. **Expected:** 
+2. **Expected:**
    - Wizard opens with correct name
    - Duration fields show correct hours/minutes
    - Chart loads with existing targets
@@ -134,7 +134,7 @@ This implementation fixes macro activation UI feedback issues and NaN duration d
 #### Test 6c: Overlapping Macro Activation
 1. Activate macro A
 2. Immediately try to activate macro B
-3. **Expected:** 
+3. **Expected:**
    - UI shows confirmation dialog: "Ein Makro ist bereits aktiv. Trotzdem wechseln?"
    - If user cancels, macro A continues
    - If user confirms, backend rejects (only one macro allowed)

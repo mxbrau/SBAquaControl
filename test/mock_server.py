@@ -26,12 +26,14 @@ Usage:
 Then open: http://localhost:5000
 """
 
-from flask import Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any
+
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
@@ -70,7 +72,7 @@ def load_schedules_from_disk():
                     data = json.load(f)
                 print(f"ℹ Loaded schedules from {kind}: {path}")
                 return {int(k): v for k, v in data.items()}
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — fall back to next seed source
                 print(f"⚠ Could not load schedules from {path}: {e}")
     return None
 
@@ -81,7 +83,7 @@ def save_schedules_to_disk():
         with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
             json.dump(schedules, f, indent=2)
         print(f"✓ Persisted schedules to {SCHEDULE_FILE}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — persist is best-effort, runtime continues
         print(f"⚠ Could not save schedules: {e}")
 
 
@@ -115,7 +117,7 @@ def write_channel_cfg(channel: int, targets):
                 value = max(0, min(100, value))
                 f.write(f"{hour:02d}:{minute:02d};{value}\r\n")
         print(f"✓ Persisted channel {channel} to SD config {fname}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — persist is best-effort, runtime continues
         print(f"⚠ Could not write SD config for channel {channel}: {e}")
 
 
@@ -184,24 +186,45 @@ schedules = load_schedules_from_disk() or {
 
 # Macros are stored as {id: {"name": str, "duration": int, "channels": {ch: [targets]}}}
 # The firmware keeps them in SD files macros/<id>_chNN.cfg plus macros/<id>.json.
-macros = {
+macros: dict[str, dict[str, Any]] = {
     "macro_001": {
         "name": "Movie Mode",
         "duration": 7200,  # 2 hours
         "channels": {
-            0: [{"time": 0, "value": 0, "isControl": True}, {"time": 7200, "value": 0, "isControl": True}],
-            1: [{"time": 0, "value": 0, "isControl": True}, {"time": 7200, "value": 0, "isControl": True}],
-            2: [{"time": 0, "value": 0, "isControl": True}, {"time": 7200, "value": 0, "isControl": True}],
-            3: [{"time": 0, "value": 0, "isControl": True}, {"time": 7200, "value": 0, "isControl": True}],
-            4: [{"time": 0, "value": 0, "isControl": True}, {"time": 7200, "value": 0, "isControl": True}],
-            5: [{"time": 0, "value": 5, "isControl": True}, {"time": 7200, "value": 5, "isControl": True}],
+            0: [
+                {"time": 0, "value": 0, "isControl": True},
+                {"time": 7200, "value": 0, "isControl": True},
+            ],
+            1: [
+                {"time": 0, "value": 0, "isControl": True},
+                {"time": 7200, "value": 0, "isControl": True},
+            ],
+            2: [
+                {"time": 0, "value": 0, "isControl": True},
+                {"time": 7200, "value": 0, "isControl": True},
+            ],
+            3: [
+                {"time": 0, "value": 0, "isControl": True},
+                {"time": 7200, "value": 0, "isControl": True},
+            ],
+            4: [
+                {"time": 0, "value": 0, "isControl": True},
+                {"time": 7200, "value": 0, "isControl": True},
+            ],
+            5: [
+                {"time": 0, "value": 5, "isControl": True},
+                {"time": 7200, "value": 5, "isControl": True},
+            ],
         },
     },
     "macro_002": {
         "name": "Maintenance",
         "duration": 3600,  # 1 hour
         "channels": {
-            i: [{"time": 0, "value": 100, "isControl": True}, {"time": 3600, "value": 100, "isControl": True}]
+            i: [
+                {"time": 0, "value": 100, "isControl": True},
+                {"time": 3600, "value": 100, "isControl": True},
+            ]
             for i in range(CHANNELS)
         },
     },
@@ -224,7 +247,10 @@ needs_time_sync = False
 
 def now_local() -> datetime:
     """Device time: wall clock shifted by whatever /api/time/set set."""
-    return datetime.now() + __import__("datetime").timedelta(seconds=clock_offset_seconds)
+    # Naive local time is correct here — the device has no timezone concept.
+    return datetime.now() + __import__("datetime").timedelta(  # noqa: DTZ005
+        seconds=clock_offset_seconds
+    )
 
 
 def current_seconds_of_day() -> int:
@@ -252,7 +278,7 @@ def expire_test_mode_if_stale() -> bool:
 def macro_remaining_seconds():
     """Return remaining seconds, clearing the macro when it expired (restoreSchedule)."""
     global active_macro, macro_activated_at, macro_duration
-    if not active_macro:
+    if not active_macro or macro_activated_at is None or macro_duration is None:
         return None
     remaining = macro_duration - int(time.monotonic() - macro_activated_at)
     if remaining <= 0:
@@ -300,7 +326,7 @@ def serve_static(path):
         return send_from_directory(
             os.path.join(os.path.dirname(__file__), "..", "extras", "SDCard"), path
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — any serve failure is a 404 for the UI
         return jsonify({"error": "File not found"}), 404
 
 
@@ -361,7 +387,7 @@ def clear_schedules():
             try:
                 os.remove(cfg)
                 print(f"✓ Deleted config file: {cfg}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — keep deleting the rest
                 print(f"⚠ Could not delete {cfg}: {e}")
     save_schedules_to_disk()
     print("✅ All schedules cleared")
@@ -448,7 +474,7 @@ def test_start():
 @app.route("/api/test/update", methods=["POST"])
 def test_update():
     """Update test values - accepts {values:[...]} or {channel, value} (Webserver.cpp:645)"""
-    global test_values, test_mode_set_at
+    global test_mode_set_at
     expire_test_mode_if_stale()
     data = json_body()
 
@@ -510,7 +536,9 @@ def macro_get():
         targets = macro["channels"].get(ch, []) if macro else []
         channels.append({"channel": ch, "targets": as_control_points(targets)})
 
-    return jsonify({"id": macro_id, "name": name, "duration": duration, "channels": channels})
+    return jsonify(
+        {"id": macro_id, "name": name, "duration": duration, "channels": channels}
+    )
 
 
 @app.route("/api/macro/save", methods=["POST"])
@@ -673,7 +701,9 @@ def debug():
     macro_sizes = {}
     for macro_id, macro in sorted(macros.items()):
         macro_sizes[macro_id] = {
-            f"ch{ch:02d}": sum(len(json.dumps(t)) for t in macro["channels"].get(ch, []))
+            f"ch{ch:02d}": sum(
+                len(json.dumps(t)) for t in macro["channels"].get(ch, [])
+            )
             for ch in range(CHANNELS)
             if macro["channels"].get(ch)
         }
@@ -702,25 +732,34 @@ def time_set():
     second = data.get("second")
 
     if hour is None or minute is None or second is None:
-        return jsonify({"error": "Missing or invalid time field (hour/minute/second)"}), 400
+        return jsonify(
+            {"error": "Missing or invalid time field (hour/minute/second)"}
+        ), 400
 
     hour, minute, second = int(hour), int(minute), int(second)
     if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
         return (
-            jsonify({"error": "Invalid time values (hour: 0-23, minute: 0-59, second: 0-59)"}),
+            jsonify(
+                {
+                    "error": "Invalid time values (hour: 0-23, minute: 0-59, second: 0-59)"
+                }
+            ),
             400,
         )
 
     # Mirror RTC.set(): keep the date, move the wall clock to the requested time
     target = now_local().replace(hour=hour, minute=minute, second=second, microsecond=0)
-    clock_offset_seconds = (target - datetime.now()).total_seconds()
+    # Both naive local times — consistent by construction (device has no tz).
+    clock_offset_seconds = (target - datetime.now()).total_seconds()  # noqa: DTZ005
 
     now_ts = int(time.time())
     last_sync_ts = now_ts
     time_sync_source = "api"
     needs_time_sync = False
 
-    print(f"✅ Time set to: {hour:02d}:{minute:02d}:{second:02d} (time sync source: API)")
+    print(
+        f"✅ Time set to: {hour:02d}:{minute:02d}:{second:02d} (time sync source: API)"
+    )
     return jsonify({"status": "ok", "time": f"{hour:02d}:{minute:02d}:{second:02d}"})
 
 
@@ -737,20 +776,22 @@ def get_channel_config():
             with open(config_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return jsonify(data)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — fall back to defaults below
             print(f"⚠ Could not load channel config: {e}")
 
     # Return defaults (same list the firmware sends)
-    return jsonify({
-        "channels": [
-            {"name": "Blau", "color": "#2196F3"},
-            {"name": "Weiß", "color": "#E0E0E0"},
-            {"name": "Rot", "color": "#F44336"},
-            {"name": "Grün", "color": "#4CAF50"},
-            {"name": "UV", "color": "#9C27B0"},
-            {"name": "Mondlicht", "color": "#FFD700"}
-        ]
-    })
+    return jsonify(
+        {
+            "channels": [
+                {"name": "Blau", "color": "#2196F3"},
+                {"name": "Weiß", "color": "#E0E0E0"},
+                {"name": "Rot", "color": "#F44336"},
+                {"name": "Grün", "color": "#4CAF50"},
+                {"name": "UV", "color": "#9C27B0"},
+                {"name": "Mondlicht", "color": "#FFD700"},
+            ]
+        }
+    )
 
 
 @app.route("/api/config/channels", methods=["POST"])
@@ -771,7 +812,7 @@ def save_channel_config():
         print(f"✓ Channel config saved to {config_file}")
         return jsonify({"status": "ok"})
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — reported to the UI as 500 below
         print(f"✗ Failed to save channel config: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -799,13 +840,10 @@ def upload_file():
             return jsonify({"success": False, "error": "No path specified"}), 400
 
         # Remove leading slash if present
-        if target_path.startswith("/"):
-            target_path = target_path[1:]
+        target_path = target_path.removeprefix("/")
 
         # Build full path to extras/SDCard
-        sd_card_base = os.path.join(
-            os.path.dirname(__file__), "..", "extras", "SDCard"
-        )
+        sd_card_base = os.path.join(os.path.dirname(__file__), "..", "extras", "SDCard")
         full_path = os.path.join(sd_card_base, target_path)
 
         # Create directories if needed (NOTE: Real firmware does NOT do this!)
@@ -819,8 +857,8 @@ def upload_file():
 
         return jsonify({"success": True, "path": target_path, "size": file_size})
 
-    except Exception as e:
-        print(f"✗ Upload failed: {str(e)}")
+    except Exception as e:  # noqa: BLE001 — reported to the UI as 500 below
+        print(f"✗ Upload failed: {e!s}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -830,11 +868,15 @@ if __name__ == "__main__":
     print("  SBAquaControl Mock API Server")
     print("=" * 60)
     print(f"  URL: http://localhost:{port}")
-    print(f"  Firmware parity: {CHANNELS} channels, {MAX_TARGETS} targets/channel, "
-          f"{TEST_MODE_TIMEOUT_S}s test-mode timeout")
-    print(f"  Runtime state: {os.path.relpath(SCHEDULE_FILE, os.path.dirname(__file__))} "
-          f"(delete it to reset to the tracked seed)")
-    print(f"  Press Ctrl+C to stop")
+    print(
+        f"  Firmware parity: {CHANNELS} channels, {MAX_TARGETS} targets/channel, "
+        f"{TEST_MODE_TIMEOUT_S}s test-mode timeout"
+    )
+    print(
+        f"  Runtime state: {os.path.relpath(SCHEDULE_FILE, os.path.dirname(__file__))} "
+        f"(delete it to reset to the tracked seed)"
+    )
+    print("  Press Ctrl+C to stop")
     print("=" * 60)
     print()
 

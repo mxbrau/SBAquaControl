@@ -1,0 +1,34 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.5.0 # Use the latest stable tag
+  hooks:
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+  - id: check-yaml
+
+- repo: local
+  hooks:
+  - id: ruff-check
+    name: ruff check
+    entry: uv
+    args: [ "run", "ruff", "check" ]
+    types: [ python ]
+    language: system
+    pass_filenames: false
+    files: ^(scripts|test)/.*$
+  - id: ruff-format
+    name: ruff-format
+    entry: uv
+    args: [ "run", "ruff", "format", "--check" ]
+    types: [ python ]
+    language: system
+    pass_filenames: false
+    files: ^(scripts|test)/.*$
+  - id: ty
+    name: ty
+    entry: uv
+    args: [ "run", "ty", "check" ]
+    types: [ python ]
+    language: system
+    pass_filenames: false
+    files: ^(scripts|test)/.*$

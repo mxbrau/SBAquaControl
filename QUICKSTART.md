@@ -6,5 +6,5 @@ Please refer to the main README for setup instructions and quick start guide.
 
 ---
 
-**Redirect**: This file has been consolidated as part of documentation cleanup.  
+**Redirect**: This file has been consolidated as part of documentation cleanup.
 **New Location**: [README.md - Quick Start Section](README.md#-quick-start)

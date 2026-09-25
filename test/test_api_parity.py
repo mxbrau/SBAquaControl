@@ -23,7 +23,6 @@ restored, so running this never leaves the repo dirty.
 
 import argparse
 import json
-import mimetypes
 import os
 import re
 import sys
@@ -41,7 +40,10 @@ MOCK = os.path.join(HERE, "mock_server.py")
 # git-ignored runtime file next to it.
 FIXTURES = [
     os.path.join(HERE, "data", "schedules.runtime.json"),
-    *[os.path.join(REPO, "extras", "SDCard", "config", f"ledch_{i:02d}.cfg") for i in range(6)],
+    *[
+        os.path.join(REPO, "extras", "SDCard", "config", f"ledch_{i:02d}.cfg")
+        for i in range(6)
+    ],
 ]
 # Files the mock may create from scratch; removed after --live if they did not exist.
 CREATED = [os.path.join(REPO, "extras", "SDCard", "config", "channels.cfg")]
@@ -116,7 +118,9 @@ def request(method, url, body=None, files=None):
             parts.append(content + b"\r\n")
         for name, value in (body or {}).items():
             parts.append(f"--{boundary}\r\n".encode())
-            parts.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+            parts.append(
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode()
+            )
             parts.append(f"{value}\r\n".encode())
         parts.append(f"--{boundary}--\r\n".encode())
         data = b"".join(parts)
@@ -142,52 +146,177 @@ def request(method, url, body=None, files=None):
 def live_checks():
     """(label, method, path, body, expected_status, required_keys)."""
     return [
-        ("status", "GET", "/api/status", None, 200,
-         ["test_mode", "time", "current_seconds", "time_source", "rtc_present",
-          "time_valid", "needs_time_sync", "last_sync_ts", "temperature",
-          "wifi_connected", "sd_card_ok", "uptime", "macro_active"]),
-        ("schedule/get valid", "GET", "/api/schedule/get?channel=0", None, 200,
-         ["channel", "targets"]),
-        ("schedule/get rejects ch=6", "GET", "/api/schedule/get?channel=6", None, 400, ["error"]),
+        (
+            "status",
+            "GET",
+            "/api/status",
+            None,
+            200,
+            [
+                "test_mode",
+                "time",
+                "current_seconds",
+                "time_source",
+                "rtc_present",
+                "time_valid",
+                "needs_time_sync",
+                "last_sync_ts",
+                "temperature",
+                "wifi_connected",
+                "sd_card_ok",
+                "uptime",
+                "macro_active",
+            ],
+        ),
+        (
+            "schedule/get valid",
+            "GET",
+            "/api/schedule/get?channel=0",
+            None,
+            200,
+            ["channel", "targets"],
+        ),
+        (
+            "schedule/get rejects ch=6",
+            "GET",
+            "/api/schedule/get?channel=6",
+            None,
+            400,
+            ["error"],
+        ),
         ("schedule/all", "GET", "/api/schedule/all", None, 200, ["schedules"]),
-        ("schedule/save", "POST", "/api/schedule/save",
-         {"channel": 0, "targets": [{"time": 3600, "value": 50}]}, 200,
-         ["status", "channel", "target_count"]),
-        ("schedule/target/add", "POST", "/api/schedule/target/add",
-         {"channel": 1, "time": 7200, "value": 42}, 200, ["success"]),
-        ("schedule/target/delete", "POST", "/api/schedule/target/delete",
-         {"channel": 1, "time": 7200}, 200, ["status"]),
-        ("schedule/clear", "POST", "/api/schedule/clear", {}, 200, ["status", "message"]),
+        (
+            "schedule/save",
+            "POST",
+            "/api/schedule/save",
+            {"channel": 0, "targets": [{"time": 3600, "value": 50}]},
+            200,
+            ["status", "channel", "target_count"],
+        ),
+        (
+            "schedule/target/add",
+            "POST",
+            "/api/schedule/target/add",
+            {"channel": 1, "time": 7200, "value": 42},
+            200,
+            ["success"],
+        ),
+        (
+            "schedule/target/delete",
+            "POST",
+            "/api/schedule/target/delete",
+            {"channel": 1, "time": 7200},
+            200,
+            ["status"],
+        ),
+        (
+            "schedule/clear",
+            "POST",
+            "/api/schedule/clear",
+            {},
+            200,
+            ["status", "message"],
+        ),
         ("test/start", "POST", "/api/test/start", {}, 200, ["status", "test_mode"]),
-        ("test/update values[]", "POST", "/api/test/update", {"values": [1, 2, 3]}, 200, ["status"]),
-        ("test/update single ch", "POST", "/api/test/update", {"channel": 2, "value": 77}, 200,
-         ["status"]),
+        (
+            "test/update values[]",
+            "POST",
+            "/api/test/update",
+            {"values": [1, 2, 3]},
+            200,
+            ["status"],
+        ),
+        (
+            "test/update single ch",
+            "POST",
+            "/api/test/update",
+            {"channel": 2, "value": 77},
+            200,
+            ["status"],
+        ),
         ("test/exit", "POST", "/api/test/exit", {}, 200, ["status", "test_mode"]),
         ("macro/list", "GET", "/api/macro/list", None, 200, ["macros"]),
-        ("macro/get", "GET", "/api/macro/get?id=macro_001", None, 200,
-         ["id", "name", "duration", "channels"]),
+        (
+            "macro/get",
+            "GET",
+            "/api/macro/get?id=macro_001",
+            None,
+            200,
+            ["id", "name", "duration", "channels"],
+        ),
         ("macro/get without id", "GET", "/api/macro/get", None, 400, ["error"]),
-        ("macro/activate", "POST", "/api/macro/activate", {"id": "macro_001", "duration": 600},
-         200, ["status", "expires_in"]),
-        ("status shows macro_id/expires_in", "GET", "/api/status", None, 200,
-         ["macro_active", "macro_id", "macro_expires_in"]),
+        (
+            "macro/activate",
+            "POST",
+            "/api/macro/activate",
+            {"id": "macro_001", "duration": 600},
+            200,
+            ["status", "expires_in"],
+        ),
+        (
+            "status shows macro_id/expires_in",
+            "GET",
+            "/api/status",
+            None,
+            200,
+            ["macro_active", "macro_id", "macro_expires_in"],
+        ),
         ("macro/stop", "POST", "/api/macro/stop", {}, 200, ["status"]),
         ("macro/stop with none active", "POST", "/api/macro/stop", {}, 400, ["error"]),
-        ("macro/save", "POST", "/api/macro/save",
-         {"name": "Parity Test", "duration": 1200,
-          "channels": [{"channel": 0, "targets": [{"time": 0, "value": 10}]}]},
-         200, ["status", "id", "name", "duration"]),
-        ("macro/delete unknown id", "POST", "/api/macro/delete", {"id": "macro_999"}, 200,
-         ["status"]),
+        (
+            "macro/save",
+            "POST",
+            "/api/macro/save",
+            {
+                "name": "Parity Test",
+                "duration": 1200,
+                "channels": [{"channel": 0, "targets": [{"time": 0, "value": 10}]}],
+            },
+            200,
+            ["status", "id", "name", "duration"],
+        ),
+        (
+            "macro/delete unknown id",
+            "POST",
+            "/api/macro/delete",
+            {"id": "macro_999"},
+            200,
+            ["status"],
+        ),
         ("macro/delete without id", "POST", "/api/macro/delete", {}, 400, ["error"]),
         ("reboot", "POST", "/api/reboot", {}, 200, ["status"]),
-        ("debug", "GET", "/api/debug", None, 200,
-         ["free_heap", "max_free_block", "heap_fragmentation", "uptime_ms",
-          "vcc_voltage_mv", "cpu_freq_mhz", "macros"]),
-        ("time/set", "POST", "/api/time/set", {"hour": 12, "minute": 30, "second": 0}, 200,
-         ["status", "time"]),
-        ("time/set rejects hour=99", "POST", "/api/time/set", {"hour": 99, "minute": 0, "second": 0},
-         400, ["error"]),
+        (
+            "debug",
+            "GET",
+            "/api/debug",
+            None,
+            200,
+            [
+                "free_heap",
+                "max_free_block",
+                "heap_fragmentation",
+                "uptime_ms",
+                "vcc_voltage_mv",
+                "cpu_freq_mhz",
+                "macros",
+            ],
+        ),
+        (
+            "time/set",
+            "POST",
+            "/api/time/set",
+            {"hour": 12, "minute": 30, "second": 0},
+            200,
+            ["status", "time"],
+        ),
+        (
+            "time/set rejects hour=99",
+            "POST",
+            "/api/time/set",
+            {"hour": 99, "minute": 0, "second": 0},
+            400,
+            ["error"],
+        ),
         ("config/channels get", "GET", "/api/config/channels", None, 200, ["channels"]),
     ]
 
@@ -251,13 +380,20 @@ def run_live(base):
 
         # /upload needs multipart; go through the request helper directly.
         status, payload = request(
-            "POST", base + "/upload",
+            "POST",
+            base + "/upload",
             body={"path": "data/__parity_upload.tmp"},
             files={"file": ("__parity_upload.tmp", b"parity")},
         )
-        if status == 200 and isinstance(payload, dict) and payload.get("success") is True:
+        if (
+            status == 200
+            and isinstance(payload, dict)
+            and payload.get("success") is True
+        ):
             print(f"  [    ok] POST  /upload                           {status}")
-            uploaded = os.path.join(REPO, "extras", "SDCard", "data", "__parity_upload.tmp")
+            uploaded = os.path.join(
+                REPO, "extras", "SDCard", "data", "__parity_upload.tmp"
+            )
             if os.path.exists(uploaded):
                 os.remove(uploaded)
             parent = os.path.dirname(uploaded)
@@ -265,18 +401,24 @@ def run_live(base):
                 os.rmdir(parent)
         else:
             failures.append(("upload", [f"status {status}, payload {payload}"]))
-            print(f"  [  FAIL] POST  /upload                           {status} {payload}")
+            print(
+                f"  [  FAIL] POST  /upload                           {status} {payload}"
+            )
     finally:
         touched = restore(state)
         if touched:
-            print(f"\n  Restored {len(touched)} fixture file(s) touched by the live run.")
+            print(
+                f"\n  Restored {len(touched)} fixture file(s) touched by the live run."
+            )
 
     return failures
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--live", action="store_true", help="also smoke-test a running mock server")
+    parser.add_argument(
+        "--live", action="store_true", help="also smoke-test a running mock server"
+    )
     parser.add_argument("--base-url", default="http://127.0.0.1:5000")
     args = parser.parse_args()
 

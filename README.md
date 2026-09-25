@@ -1,5 +1,7 @@
 # SBAquaControl
 
+[![Coverage](https://raw.githubusercontent.com/mxbrau/SBAquaControl/python-coverage-comment-action-data/badge.svg)](https://github.com/mxbrau/SBAquaControl/tree/python-coverage-comment-action-data)
+
 Schullebernd Aqua Control ist eine WLAN Aquarium Lichtsteuerung (Tageslichtsimulation) für LED Beleuchtungen.
 
 Eine komplette Beschreibung zum Aufbau der Steuerung sowie zum Selbstbau einer Aquarium LED Beleuchtung ist auf http://schullebernd.de/ zu finden.
@@ -59,7 +61,7 @@ This allows you to develop and test the web UI, create HTML/JavaScript files, an
    ```
 
 2. **Enable OTA for Wireless Updates**
-    
+
    After the initial USB upload, you can update the firmware wirelessly:
    ```bash
    pio run -e esp8266_ota --target upload
@@ -98,7 +100,7 @@ For detailed hardware specifications, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 📝 Current Status
 
-**Version**: 0.5.001  
+**Version**: 0.5.001
 **Last Updated**: 2026-01-05
 
 ### Implemented Features
@@ -109,7 +111,7 @@ For detailed hardware specifications, see [ARCHITECTURE.md](ARCHITECTURE.md).
 - ✅ **Test Mode** - Manual channel control (60-second timeout)
 - ✅ **Temperature Monitoring** - Optional DS18B20 sensor support
 - ✅ **OTA Updates** - Wireless firmware updates via WiFi
-- ✅ **Memory Optimized** - ~56% RAM usage on ESP8266 (verify: `uv run python test/run_checks.py --only build`)
+- ✅ **Memory Optimized** - ~56% RAM usage on ESP8266 (verify: `uv run pytest test/ -m build`)
 
 ### Known Limitations
 - Linear interpolation only (no smooth curves)

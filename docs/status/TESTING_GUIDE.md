@@ -1,7 +1,7 @@
 # SBAquaControl v0.5.001 - Comprehensive Testing Guide
 
-**Date**: 2025-12-30  
-**Firmware Version**: 0.5.001  
+**Date**: 2025-12-30
+**Firmware Version**: 0.5.001
 **Target**: Full feature validation with linear interpolation
 
 ---
@@ -15,8 +15,8 @@ automated - run it before touching hardware, so a failure here is caught in
 seconds instead of during a test session:
 
 ```bash
-uv run python test/run_checks.py               # firmware build + API parity + contract checks
-uv run python test/run_checks.py --skip-build  # faster, while iterating on the UI
+uv run pytest test/                       # everything automated
+uv run pytest test/ -m "not build"     # faster, while iterating on the UI
 ```
 
 See [`test/README.md`](../../test/README.md) for what each layer covers, how to
@@ -84,7 +84,7 @@ Device Status:
 
 **Visual Example**:
 ```
-100% ┌────────────┐  
+100% ┌────────────┐
      │            │
   80%│          ╱ │ ╲
   60%│        ╱   │   ╲
@@ -585,7 +585,7 @@ Bugs are tracked in the [GitHub issue tracker](https://github.com/mxbrau/SBAquaC
 - Web server intermittently unreachable from phones
 - Macro list loading takes 20 s or more
 
-Automated coverage (no hardware needed): `uv run python test/run_checks.py` runs BUILD (firmware compiles within budget) + PARITY (mock mirrors firmware routes) + LIVE (endpoints match the contract) + UNIT (scheduling maths on the host). See [`test/README.md`](../../test/README.md). Everything that page does not cover needs the hardware checklist in this guide.
+Automated coverage (no hardware needed): `uv run pytest test/` runs the firmware build within budget, the mock route parity, the mock endpoint contract checks, and the scheduling maths on the host — all against a local mock, never the real device. Skip the slow build with `-m "not build"`. See [`test/README.md`](../../test/README.md). Everything that page does not cover needs the hardware checklist in this guide.
 
 ---
 
@@ -641,6 +641,6 @@ console.log(values);
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025-12-30  
+**Document Version**: 1.0
+**Last Updated**: 2025-12-30
 **Status**: Ready for Testing

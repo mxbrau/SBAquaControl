@@ -173,14 +173,14 @@ As noted in the plan, potential future additions include:
 5. NTP sync integration
 
 ## Consistency Checks
-✅ Follows existing JSON API patterns  
-✅ Uses F() macro for Serial strings  
-✅ Memory-safe char buffer usage  
-✅ Proper error handling  
-✅ Conditional compilation  
-✅ Consistent with codebase style  
-✅ Documented with examples  
-✅ Test suite provided  
+✅ Follows existing JSON API patterns
+✅ Uses F() macro for Serial strings
+✅ Memory-safe char buffer usage
+✅ Proper error handling
+✅ Conditional compilation
+✅ Consistent with codebase style
+✅ Documented with examples
+✅ Test suite provided
 
 ## References
 - Plan: `.github/plans/step-05-time-setting-api.md`

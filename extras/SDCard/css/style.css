@@ -35,7 +35,7 @@ input[type="text"]{
 	color:#125DA8;
 }
 
-input[type="submit"]:active, button:active{	
+input[type="submit"]:active, button:active{
 	border-top:solid 2px #125DA8;
 	border-left:solid 2px #125DA8;
 	border-right:solid 0px #125DA8;

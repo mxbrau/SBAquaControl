@@ -42,7 +42,7 @@ async function syncTimeToBrowser() {
     const hour = now.getHours();
     const minute = now.getMinutes();
     const second = now.getSeconds();
-    
+
     try {
         const result = await setDeviceTime(hour, minute, second);
         console.log('Time synchronized:', result.time);

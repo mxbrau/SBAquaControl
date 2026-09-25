@@ -11,13 +11,13 @@ void setup() {
 	Serial.begin(19200);
 
 	// Init AquaControl
-	aqc.init();		
+	aqc.init();
 }
 
 void loop() {
 
 	aqc.proceedCycle();
-	  
+
 	// OLD LOOP FOR TESTING
 	if (Serial.available()){
 		String sInput = Serial.readStringUntil('\n');

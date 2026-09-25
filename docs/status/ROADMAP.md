@@ -1,7 +1,7 @@
 # SBAquaControl Development Roadmap
 
-**Current Version**: 0.5.001  
-**Status**: ✅ Stable with all core features implemented  
+**Current Version**: 0.5.001
+**Status**: ✅ Stable with all core features implemented
 **Next Milestone**: Phase 2 - Enhanced Visualization (next)
 
 ---
@@ -177,7 +177,7 @@ void handleApiScheduleGenerate() {
     // Request format: {channel, controlPoints, samplesPerSegment}
     // Perform spline computation
     // Return densified targets
-    
+
     // Alternative: Offload to client only (no firmware changes needed)
 }
 ```
@@ -344,7 +344,7 @@ v0.5.001 (released January 2026 - STABLE)
 ├─ ✅ Macro timer system implemented
 ├─ ✅ Hybrid time sync implemented
 ├─ ✅ Stability & optimization
-└─ ✅ Host unit-test harness (test/run_checks.py UNIT layer)
+└─ ✅ Host unit-test harness (test/test_host_unit.py, always run by `pytest`)
 
 Next: Phase 2 - Enhanced Visualization
 ├─ Optional spline smoothing
@@ -463,6 +463,6 @@ Guidelines for future developers:
 
 ---
 
-**Document Version**: 2.0  
-**Last Updated**: 2026-01-05  
+**Document Version**: 2.0
+**Last Updated**: 2026-01-05
 **Status**: Phase 3 completed, Phase 4 ready for planning

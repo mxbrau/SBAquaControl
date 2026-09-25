@@ -1,6 +1,6 @@
 # SBAquaControl Documentation Index
 
-**Last Updated**: January 5, 2026  
+**Last Updated**: January 5, 2026
 **Firmware Version**: 0.5.001
 
 This index helps you navigate the SBAquaControl documentation and find the information you need quickly.
@@ -55,7 +55,7 @@ Understanding what's implemented and what's planned:
 Test procedures and validation guides:
 
 1. **[docs/status/TESTING_GUIDE.md](docs/status/TESTING_GUIDE.md)** - Comprehensive testing guide
-2. **[test/README.md](test/README.md)** - Automated layers: `python test/run_checks.py` (BUILD + PARITY + LIVE + UNIT), no hardware needed
+2. **[test/README.md](test/README.md)** - Automated layers: `uv run pytest test/` (marker: `build`; `-m "not build"` skips the slow firmware build), no hardware needed
 3. **[docs/testing/test-hybrid-time-sync.md](docs/testing/test-hybrid-time-sync.md)** - Time sync feature tests
 4. **[docs/testing/test-time-api.md](docs/testing/test-time-api.md)** - Time API endpoint tests
 
@@ -223,5 +223,5 @@ Please update it following the standards above, or open an issue describing what
 
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 1.0
 **Maintained By**: SBAquaControl Development Team
