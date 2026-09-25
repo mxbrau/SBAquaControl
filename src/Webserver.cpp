@@ -1704,6 +1704,70 @@ void handleApiDebug()
 	}
 	_Server.sendContent("]}"); // Close channels array AND main JSON object
 
+	// Issue #28: event-log diagnostics - is the SD log alive and what did it
+	// record most recently (last lines, newest last)?
+	_Server.sendContent(",\"log\":{\"sd_ok\":");
+	_Server.sendContent(_aqc->_sdLogOk ? "true" : "false");
+	{
+		uint32_t logSize = _aqc->eventLogSize();
+		sprintf(buf, ",\"lines_this_boot\":%u,\"size_bytes\":%lu,\"last_n\":%u,\"last_events\":[",
+				(unsigned)_aqc->_logLineCount,
+				(unsigned long)logSize,
+				(unsigned)(_aqc->_sdLogOk ? 8 : 0));
+		_Server.sendContent(buf);
+
+		if (_aqc->_sdLogOk && logSize > 0)
+		{
+			// Simple bounded tail read: read the final min(size, 600) bytes and
+			// split into lines, emit the last 8 (oldest-first).
+			uint32_t window = logSize > 512 ? 512 : logSize;
+			File f = SD.open("log/events.log");
+			if (f)
+			{
+				f.seek(logSize - window);
+				String chunk = f.readString();
+				f.close();
+
+				// Collect line start offsets (after each \n) in the window.
+				int starts[9];
+				uint8_t count = 0;
+				starts[count++] = 0;
+				for (unsigned int i = 0; i < chunk.length() && count < 9; i++)
+				{
+					if (chunk.charAt(i) == '\n' && i + 1 < chunk.length())
+						starts[count++] = i + 1;
+				}
+				// skip the first partial line unless the window starts at a
+				// line boundary; also skip a trailing empty segment
+				uint8_t first = (window == logSize || chunk.charAt(0) == '\n' || chunk.charAt(0) == '\r') ? 0 : 1;
+				for (uint8_t i = first; i < count; i++)
+				{
+					int end = -1;
+					for (uint8_t j = i; j < count; j++)
+					{
+						if (starts[j] > starts[i])
+						{
+							end = starts[j];
+							break;
+						}
+					}
+					if (end == -1)
+						end = chunk.length();
+					String line = chunk.substring(starts[i], end);
+					line.trim();
+					if (line.length() == 0)
+						continue;
+					if (i > first)
+						_Server.sendContent(",");
+					_Server.sendContent("\"");
+					_Server.sendContent(line.c_str());
+					_Server.sendContent("\"");
+				}
+			}
+		}
+		_Server.sendContent("]}");
+	}
+
 	// Also log to serial
 	Serial.print(F("DEBUG: Free="));
 	Serial.print(freeHeap);

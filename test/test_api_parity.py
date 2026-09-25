@@ -300,6 +300,7 @@ def live_checks():
                 "cpu_freq_mhz",
                 "macros",
                 "channels",
+                "log",
             ],
         ),
         (
