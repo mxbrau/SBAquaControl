@@ -345,6 +345,148 @@ public:
 				(unsigned)hour(e.ts), (unsigned)minute(e.ts), (unsigned)second(e.ts),
 				event, (unsigned)reason);
 		Serial.println(buf);
+
+		// Issue #28: WiFi state changes also go to the persistent SD event log.
+		logEvent(buf);
+	}
+#endif
+
+#if defined(ESP8266)
+	// Issue #28: persistent event log on the SD card (log/events.log).
+	// Answers "what happened while nobody was watching": the network dropout
+	// incidents of 2026-09-24/25 could not be explained afterwards because the
+	// serial buffer dies together with reachability. Recording only.
+	static constexpr const char *LOG_DIR = "log";
+	static constexpr const char *LOG_PATH = "log/events.log";
+	static constexpr uint32_t LOG_ROTATE_BYTES = 500UL * 1024UL;
+
+	uint32_t _lastHeartbeatLogMs = 0; // last heartbeat millis (pacing)
+	uint16_t _logLineCount = 0;		 // lines since last rotation check
+	bool _sdLogOk = false;			 // set at boot, cleared on first failed write
+
+	void logEvent(const char *line)
+	{
+		if (!_sdLogOk)
+			return;
+		if (++_logLineCount >= 500)
+		{
+			rotateIfNeeded();
+			_logLineCount = 0;
+		}
+		File f = SD.open(LOG_PATH, FILE_WRITE);
+		if (!f)
+		{
+			_sdLogOk = false; // one warning per boot, then silent
+			Serial.println(F("WARN: SD event log write failed - logging disabled this boot"));
+			return;
+		}
+		f.print(line);
+		if (line[strlen(line) - 1] != '\n')
+			f.print('\n');
+		f.close();
+	}
+
+	void rotateIfNeeded()
+	{
+		File f = SD.open(LOG_PATH);
+		if (!f)
+			return;
+		uint32_t size = f.size();
+		f.close();
+		if (size < LOG_ROTATE_BYTES)
+			return;
+		char oldPath[24];
+		strcpy(oldPath, LOG_PATH);
+		strcat(oldPath, ".1");
+		if (SD.exists(oldPath))
+			SD.remove(oldPath);
+		SD.rename(LOG_PATH, oldPath); // keep one generation only
+	}
+
+	// Called once right after SD.begin() in init(), BEFORE network init, so
+	// even the boot connect result lands in the log.
+	void initEventLog()
+	{
+		_sdLogOk = true;
+
+		// log/ directory: SD lib has no mkdir in some cores - tolerate failure.
+		if (!SD.mkdir(LOG_DIR))
+		{
+			File d = SD.open(LOG_DIR);
+			_sdLogOk = d && d.isDirectory();
+			if (d)
+				d.close();
+		}
+		if (!_sdLogOk)
+		{
+			Serial.println(F("WARN: event log disabled (no log/ directory on SD)"));
+			return;
+		}
+
+		rotateIfNeeded();
+
+		// A power pull during a write leaves one truncated last line. Detect it
+		// and record the gap so the log stays line-parseable.
+		File r = SD.open(LOG_PATH);
+		if (r && r.size() > 0)
+		{
+			uint32_t size = r.size();
+			r.seek(size - 1);
+			bool truncatedTail = (r.read() != '\n');
+			r.close();
+			if (truncatedTail)
+			{
+				File a = SD.open(LOG_PATH, FILE_WRITE);
+				if (a)
+				{
+					a.print(F("<line truncated: previous run ended mid-write>\n"));
+					a.close();
+				}
+			}
+		}
+
+		// THE discriminator: why did we reboot? (brownout / WDT / clean)
+		char buf[96];
+#if defined(ESP8266)
+		// Esp::getResetReason() returns a translated string from the SDK
+		// ("Software/System restart", "Boot log", etc.) - log it verbatim.
+		String rr = ESP.getResetReason();
+		snprintf(buf, sizeof(buf), "boot (reset reason: %s)", rr.c_str());
+#else
+		sprintf(buf, "boot (reset reason: n/a)");
+#endif
+		logEvent(buf);
+		Serial.println(buf);
+	}
+
+	// Heartbeat from the main loop: proves the device was alive and lets the
+	// next boot measure an outage gap. One write per 5 min, never in an ISR.
+	void logHeartbeat()
+	{
+		if (!_sdLogOk)
+			return;
+		uint32_t ms = millis();
+		if (_lastHeartbeatLogMs != 0 && ms - _lastHeartbeatLogMs < 5UL * 60UL * 1000UL)
+			return;
+		_lastHeartbeatLogMs = ms;
+		char buf[48];
+		sprintf(buf, "%02u:%02u:%02u heartbeat up=%lus",
+				(unsigned)hour(), (unsigned)minute(), (unsigned)second(),
+				(unsigned long)(ms / 1000));
+		logEvent(buf);
+	}
+
+	// Current byte size of the event log (0 if unavailable).
+	uint32_t eventLogSize()
+	{
+		if (!_sdLogOk)
+			return 0;
+		File f = SD.open(LOG_PATH);
+		if (!f)
+			return 0;
+		uint32_t size = f.size();
+		f.close();
+		return size;
 	}
 #endif
 #if defined(USE_WEBSERVER)

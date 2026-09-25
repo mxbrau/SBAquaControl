@@ -1704,6 +1704,86 @@ void handleApiDebug()
 	}
 	_Server.sendContent("]}"); // Close channels array AND main JSON object
 
+	// Issue #28: event-log diagnostics - is the SD log alive and what did it
+	// record most recently (last lines, newest last)?
+	_Server.sendContent(",\"log\":{\"sd_ok\":");
+	_Server.sendContent(_aqc->_sdLogOk ? "true" : "false");
+	{
+		uint32_t logSize = _aqc->eventLogSize();
+		// Overflow guard (the same bug class as the 16-byte channel lines
+		// found on hardware 2026-09-25): this prefix alone is 63-76 bytes, so
+		// it needs its own buffer, NOT the 16-byte numeric helper.
+		char logBuf[92];
+		snprintf(logBuf, sizeof(logBuf), ",\"lines_this_boot\":%u,\"size_bytes\":%lu,\"last_n\":%u,\"last_events\":[",
+				 (unsigned)_aqc->_logLineCount,
+				 (unsigned long)logSize,
+				 (unsigned)(_aqc->_sdLogOk ? 8 : 0));
+		_Server.sendContent(logBuf);
+
+		if (_aqc->_sdLogOk && logSize > 0)
+		{
+			// Bounded tail read: read the final min(size, 600) bytes, split
+			// into complete lines only, emit the last 8 (oldest-first), with
+			//   - the first (partial) line of the window dropped, and
+			//   - JSON escaping of backslash/quote/control chars.
+			// (This reader had a concatenation bug on first hardware test
+			// 2026-09-25: lines after the first were emitted raw with literal
+			// newlines inside one unterminated string.)
+			uint32_t window = logSize > 600 ? 600 : logSize;
+			File f = SD.open("log/events.log");
+			if (f)
+			{
+				f.seek(logSize - window);
+				String chunk = f.readString();
+				f.close();
+				if (chunk.length() > 0)
+				{
+					// Split into lines; the first segment is a partial line
+					// unless the window started at a line boundary.
+					const int MAXLINES = 9; // more than we emit, for safety
+					String lines[MAXLINES];
+					uint8_t lineCount = 0;
+					unsigned int start = (window == logSize) ? 0 : (unsigned int)chunk.indexOf('\n') + 1;
+					for (unsigned int i = start; i < chunk.length() && lineCount < MAXLINES; i++)
+					{
+						if (chunk.charAt(i) == '\n')
+						{
+							lines[lineCount++] = chunk.substring(start, i);
+							start = i + 1;
+						}
+					}
+					// trailing segment without \n = incomplete last line: skip
+					// it when the window reached EOF exactly at it? No - the
+					// file's final byte IS '\n' by construction (logEvent
+					// appends it), so only clock-window truncation can leave
+					// a tail; it was already repaired at boot.
+					uint8_t firstEmit = lineCount > 8 ? lineCount - 8 : 0;
+					for (uint8_t i = firstEmit; i < lineCount; i++)
+					{
+						if (i > firstEmit)
+							_Server.sendContent(",");
+						_Server.sendContent("\"");
+						for (unsigned int j = 0; j < lines[i].length(); j++)
+						{
+							char c = lines[i].charAt(j);
+							if (c == '"' || c == '\\')
+							{
+								char esc[2] = {'\\', c};
+								_Server.sendContent(esc);
+							}
+							else
+							{
+								_Server.sendContent(String(c));
+							}
+						}
+						_Server.sendContent("\"");
+					}
+				}
+			}
+		}
+		_Server.sendContent("]}");
+	}
+
 	// Also log to serial
 	Serial.print(F("DEBUG: Free="));
 	Serial.print(freeHeap);

@@ -60,6 +60,7 @@ static void printTime()
 // Debug issue #26: every diagnostic line gets the current time-of-day prefix so
 // serial logs can be correlated with the schedule. Use for NEW state-transition
 // logs; retrofitting all 280 existing Serial.print sites is out of scope here.
+static void debugLog(const char *msg) __attribute__((unused)); // used by behavior PRs; kept so the API exists from day one
 static void debugLog(const char *msg)
 {
 	char buf[16];
@@ -769,6 +770,11 @@ void AquaControl::init()
 	}
 	Serial.println(F(" Done."));
 
+	// Issue #28: start the persistent event log immediately after the card
+	// comes up - the boot line lands in log/events.log before any network
+	// activity, and the reset reason of THIS boot is recorded for forensics.
+	initEventLog();
+
 #if defined(ESP8266)
 	Serial.print(F("Reading wlan config from SD card..."));
 	if (!readWlanConfig())
@@ -965,6 +971,12 @@ void AquaControl::proceedCycle()
 		}
 	}
 	_IsFirstCycle = false;
+
+#if defined(ESP8266)
+	// Issue #28: periodic heartbeat into the SD event log (paced to one write
+	// per 5 min; append-only design keeps it out of the PWM hot path).
+	logHeartbeat();
+#endif
 
 #if defined(USE_WEBSERVER)
 	// Hande the Webserver features

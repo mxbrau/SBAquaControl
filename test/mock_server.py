@@ -244,6 +244,15 @@ time_sync_source = "rtc"  # "ntp" | "rtc" | "api" | "unknown"
 last_sync_ts = 0
 needs_time_sync = False
 
+# Issue #28: in-RAM mirror of the device's log/events.log. Boot line is
+# appended by the startup path below; API transitions append via sd_log().
+SD_EVENT_LOG: list[str] = []
+
+
+def sd_log(line: str) -> None:
+    """Append one entry to the mock's event-log mirror (issues #28)."""
+    SD_EVENT_LOG.append(line)
+
 
 def now_local() -> datetime:
     """Device time: wall clock shifted by whatever /api/time/set set."""
@@ -271,6 +280,7 @@ def expire_test_mode_if_stale() -> bool:
         test_mode_active = False
         test_mode_set_at = None
         print(f"⏱ Test mode auto-exited after {TEST_MODE_TIMEOUT_S}s")
+        sd_log("test_mode_expired")
         return True
     return False
 
@@ -283,6 +293,7 @@ def macro_remaining_seconds():
     remaining = macro_duration - int(time.monotonic() - macro_activated_at)
     if remaining <= 0:
         print(f"■ Macro '{active_macro}' expired, restoring schedule")
+        sd_log(f"macro {active_macro} auto-restored")
         active_macro = None
         macro_activated_at = None
         macro_duration = 0
@@ -468,6 +479,7 @@ def test_start():
     test_mode_active = True
     test_mode_set_at = time.monotonic()
     print("▶ Test mode ACTIVATED")
+    sd_log("test_mode_entered")
     return jsonify({"status": "ok", "test_mode": True})
 
 
@@ -504,6 +516,7 @@ def test_exit():
     test_mode_active = False
     test_mode_set_at = None
     print("■ Test mode DEACTIVATED")
+    sd_log("test_mode_exited")
     return jsonify({"status": "ok", "test_mode": False})
 
 
@@ -599,6 +612,7 @@ def macro_activate():
     macro_activated_at = time.monotonic()
     macro_duration = duration
     print(f"🎬 Macro activated: {macro_id}, duration: {duration}s")
+    sd_log(f"macro {macro_id} started ({duration}s)")
     return jsonify({"status": "ok", "expires_in": duration})
 
 
@@ -611,6 +625,7 @@ def macro_stop():
         return jsonify({"error": "No macro active"}), 400
 
     print(f"🛑 Macro stopped manually: {active_macro}")
+    sd_log(f"macro {active_macro} stopped manually")
     active_macro = None
     macro_activated_at = None
     macro_duration = 0
@@ -759,6 +774,15 @@ def debug():
             "cpu_freq_mhz": CPU_FREQ_MHZ,
             "macros": macro_sizes,
             "channels": channels,
+            # Issue #28 mirror: the mock cannot simulate an SD card, so the log
+            # is a small in-RAM list it appends to on the same events.
+            "log": {
+                "sd_ok": True,
+                "lines_this_boot": len(SD_EVENT_LOG),
+                "size_bytes": sum(len(l) + 1 for l in SD_EVENT_LOG),
+                "last_n": 8,
+                "last_events": SD_EVENT_LOG[-8:],
+            },
         }
     )
 
@@ -906,6 +930,7 @@ def upload_file():
 
 if __name__ == "__main__":
     port = int(os.environ.get("MOCK_PORT", "5000"))
+    sd_log(f"boot (mock build, {len(macros)} macros)")
     print("=" * 60)
     print("  SBAquaControl Mock API Server")
     print("=" * 60)
