@@ -70,8 +70,21 @@ void AquaControl::initESP8266NetworkConnection()
 	Serial.print(_WlanConfig.SSID);
 	WiFi.persistent(false);
 	WiFi.mode(WIFI_STA);
+	// Single disconnect handler serving BOTH consumers: the supervision
+	// (needs the reason code) and the event log (ring buffer + SD line).
 	_onWifiDisconnect = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &e)
-													   { _lastWifiDisconnectReason = e.reason; });
+	{
+		_lastWifiDisconnectReason = e.reason;
+		if (_aqc)
+			_aqc->recordWifiEvent("disconnected", e.reason);
+	});
+	// onStationModeGotIP fires on the initial association AND every
+	// re-association - the "reconnected" signal for the log.
+	WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &)
+	{
+		if (_aqc)
+			_aqc->recordWifiEvent("reconnected", 0);
+	});
 	// Issue #8 (H1): never let the WiFi modem sleep. The default modem-sleep
 	// duty-cycles the RF stage between DTIM beacons, which drops/delays packets
 	// and makes TCP connections stall or fail on the first SYN - exactly the
@@ -107,15 +120,17 @@ void AquaControl::initESP8266NetworkConnection()
 		WiFi.mode(WIFI_AP);
 		WiFi.softAPConfig(IPAddress(192, 168, 0, 1), IPAddress(192, 168, 0, 1), IPAddress(255, 255, 255, 0));
 		WiFi.softAP("SBAQC_WIFI", "sbaqc12345");
+		recordWifiEvent("boot-connect-failed", 0);
 	}
 	else
 	{
 		Serial.println(F(" Done."));
+		recordWifiEvent("connected", 0);
 	}
 	Serial.print(F("IP address: "));
 	Serial.println(WiFi.localIP());
-	// Issue #8 (H2): first supervision check 5 s from now, so the initial
-	// connect attempt above is never mistaken for a dropped link.
+	// First supervision check 5 s from now, so the initial connect attempt
+	// above is never mistaken for a dropped link.
 	_wifiLastCheckMs = millis();
 }
 
@@ -952,6 +967,14 @@ void AquaControl::proceedCycle()
 	// after 12 consecutive failures (~60 s). STA mode only - the AP
 	// fallback after a failed boot connect is intentional and must not be
 	// "repaired" away (a restart loop would make config unreachable).
+	//
+	// Issue #28 knowledge (2026-09-25 dropout forensics): the observed hang
+	// was NOT a WiFi drop - no wifi_disconnected line, loop itself wedged.
+	// This supervision therefore targets the OTHER failure mode ("in router
+	// list but unreachable"); it cannot rescue a wedged loop, but with the
+	// restart on 12 failures the device now self-recovers from the first
+	// mode instead of sitting dead for hours. Restart reason lands in the
+	// SD event log, so any restart is explained afterwards.
 	if (WiFi.getMode() == WIFI_STA && msNow - _wifiLastCheckMs >= 5000)
 	{
 		_wifiLastCheckMs = msNow;
@@ -964,6 +987,7 @@ void AquaControl::proceedCycle()
 			if (_wifiFailCount >= 12)
 			{
 				Serial.println(F("WiFi link unrecoverable for 60 s - restarting"));
+				logEvent("wifi_supervision_restart: link down 60s, ESP.restart()");
 				ESP.restart();
 			}
 		}
