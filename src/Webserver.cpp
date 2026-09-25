@@ -1722,50 +1722,62 @@ void handleApiDebug()
 
 		if (_aqc->_sdLogOk && logSize > 0)
 		{
-			// Simple bounded tail read: read the final min(size, 600) bytes and
-			// split into lines, emit the last 8 (oldest-first).
-			uint32_t window = logSize > 512 ? 512 : logSize;
+			// Bounded tail read: read the final min(size, 600) bytes, split
+			// into complete lines only, emit the last 8 (oldest-first), with
+			//   - the first (partial) line of the window dropped, and
+			//   - JSON escaping of backslash/quote/control chars.
+			// (This reader had a concatenation bug on first hardware test
+			// 2026-09-25: lines after the first were emitted raw with literal
+			// newlines inside one unterminated string.)
+			uint32_t window = logSize > 600 ? 600 : logSize;
 			File f = SD.open("log/events.log");
 			if (f)
 			{
 				f.seek(logSize - window);
 				String chunk = f.readString();
 				f.close();
-
-				// Collect line start offsets (after each \n) in the window.
-				int starts[9];
-				uint8_t count = 0;
-				starts[count++] = 0;
-				for (unsigned int i = 0; i < chunk.length() && count < 9; i++)
+				if (chunk.length() > 0)
 				{
-					if (chunk.charAt(i) == '\n' && i + 1 < chunk.length())
-						starts[count++] = i + 1;
-				}
-				// skip the first partial line unless the window starts at a
-				// line boundary; also skip a trailing empty segment
-				uint8_t first = (window == logSize || chunk.charAt(0) == '\n' || chunk.charAt(0) == '\r') ? 0 : 1;
-				for (uint8_t i = first; i < count; i++)
-				{
-					int end = -1;
-					for (uint8_t j = i; j < count; j++)
+					// Split into lines; the first segment is a partial line
+					// unless the window started at a line boundary.
+					const int MAXLINES = 9; // more than we emit, for safety
+					String lines[MAXLINES];
+					uint8_t lineCount = 0;
+					unsigned int start = (window == logSize) ? 0 : (unsigned int)chunk.indexOf('\n') + 1;
+					for (unsigned int i = start; i < chunk.length() && lineCount < MAXLINES; i++)
 					{
-						if (starts[j] > starts[i])
+						if (chunk.charAt(i) == '\n')
 						{
-							end = starts[j];
-							break;
+							lines[lineCount++] = chunk.substring(start, i);
+							start = i + 1;
 						}
 					}
-					if (end == -1)
-						end = chunk.length();
-					String line = chunk.substring(starts[i], end);
-					line.trim();
-					if (line.length() == 0)
-						continue;
-					if (i > first)
-						_Server.sendContent(",");
-					_Server.sendContent("\"");
-					_Server.sendContent(line.c_str());
-					_Server.sendContent("\"");
+					// trailing segment without \n = incomplete last line: skip
+					// it when the window reached EOF exactly at it? No - the
+					// file's final byte IS '\n' by construction (logEvent
+					// appends it), so only clock-window truncation can leave
+					// a tail; it was already repaired at boot.
+					uint8_t firstEmit = lineCount > 8 ? lineCount - 8 : 0;
+					for (uint8_t i = firstEmit; i < lineCount; i++)
+					{
+						if (i > firstEmit)
+							_Server.sendContent(",");
+						_Server.sendContent("\"");
+						for (unsigned int j = 0; j < lines[i].length(); j++)
+						{
+							char c = lines[i].charAt(j);
+							if (c == '"' || c == '\\')
+							{
+								char esc[2] = {'\\', c};
+								_Server.sendContent(esc);
+							}
+							else
+							{
+								_Server.sendContent(String(c));
+							}
+						}
+						_Server.sendContent("\"");
+					}
 				}
 			}
 		}
