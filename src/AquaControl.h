@@ -313,6 +313,10 @@ public:
 #if defined(ESP8266)
 	WlanConfig _WlanConfig;
 
+	// Issue #8 (H2): WiFi link supervision state for proceedCycle().
+	uint32_t _wifiLastCheckMs = 0;
+	uint8_t _wifiFailCount = 0;
+
 	// Debug issue #26: WiFi connection history ring buffer. Records state
 	// changes with time-of-day so "was the device reachable at H:MM" can be
 	// answered after the fact. Recording only - no supervision/reconnect

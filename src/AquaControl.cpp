@@ -57,25 +57,47 @@ static void printTime()
 	Serial.println(buf);
 }
 
-// Debug issue #26: every diagnostic line gets the current time-of-day prefix so
-// serial logs can be correlated with the schedule. Use for NEW state-transition
-// logs; retrofitting all 280 existing Serial.print sites is out of scope here.
-static void debugLog(const char *msg) __attribute__((unused)); // used by behavior PRs; kept so the API exists from day one
-static void debugLog(const char *msg)
-{
-	char buf[16];
-	sprintf(buf, "%02u:%02u:%02u ", (unsigned)hour(), (unsigned)minute(), (unsigned)second());
-	Serial.print(buf);
-	Serial.println(msg);
-}
-
 #if defined(ESP8266)
+// Issue #8 (H2): last WiFi disconnect reason, captured via event handler.
+// (WiFi.getDisconnectReason() does not exist in the pinned core; the
+// STA-disconnected event carries the same reason code.)
+static WiFiEventHandler _onWifiDisconnect;
+static uint8_t _lastWifiDisconnectReason = 0; // 0 = none recorded since boot
+
 void AquaControl::initESP8266NetworkConnection()
 {
 	Serial.print(F("Connecting to "));
 	Serial.print(_WlanConfig.SSID);
 	WiFi.persistent(false);
 	WiFi.mode(WIFI_STA);
+	// Single disconnect handler serving BOTH consumers: the supervision
+	// (needs the reason code) and the event log (ring buffer + SD line).
+	_onWifiDisconnect = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &e)
+	{
+		_lastWifiDisconnectReason = e.reason;
+		if (_aqc)
+			_aqc->recordWifiEvent("disconnected", e.reason);
+	});
+	// onStationModeGotIP fires on the initial association AND every
+	// re-association - the "reconnected" signal for the log.
+	WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &)
+	{
+		if (_aqc)
+			_aqc->recordWifiEvent("reconnected", 0);
+	});
+	// Issue #8 (H1): never let the WiFi modem sleep. The default modem-sleep
+	// duty-cycles the RF stage between DTIM beacons, which drops/delays packets
+	// and makes TCP connections stall or fail on the first SYN - exactly the
+	// "server often unreachable" symptom, worst on modern phones with fast
+	// timeouts. Costs a little idle current; irrelevant on a mains-powered
+	// controller.
+	WiFi.setSleepMode(WIFI_NONE_SLEEP);
+	// Issue #8 (H2): let the core re-associate by itself; the supervision in
+	// proceedCycle() is the next rung of the ladder.
+	WiFi.setAutoReconnect(true);
+	// Issue #8 (H4): stable name for DHCP and the router's client list
+	// (matches the OTA/mDNS hostname below).
+	WiFi.hostname("SBAQC");
 	if (_WlanConfig.ManualIP)
 	{
 		Serial.print(F(" using fixed IP "));
@@ -107,21 +129,9 @@ void AquaControl::initESP8266NetworkConnection()
 	}
 	Serial.print(F("IP address: "));
 	Serial.println(WiFi.localIP());
-
-	// Debug issue #26: record disconnects (with reason) and re-connections in
-	// the ring buffer. Recording only - no reconnect/supervision behavior here.
-	WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &e)
-								   {
-									   if (_aqc)
-										   _aqc->recordWifiEvent("disconnected", e.reason);
-								   });
-	// onStationModeGotIP fires on both the initial association and every
-	// re-association, which is exactly the "reconnected" signal.
-	WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &)
-							{
-								if (_aqc)
-									_aqc->recordWifiEvent("reconnected", 0);
-							});
+	// First supervision check 5 s from now, so the initial connect attempt
+	// above is never mistaken for a dropped link.
+	_wifiLastCheckMs = millis();
 }
 
 Option extractOptionFromConfigLine(String sLine)
@@ -770,11 +780,6 @@ void AquaControl::init()
 	}
 	Serial.println(F(" Done."));
 
-	// Issue #28: start the persistent event log immediately after the card
-	// comes up - the boot line lands in log/events.log before any network
-	// activity, and the reset reason of THIS boot is recorded for forensics.
-	initEventLog();
-
 #if defined(ESP8266)
 	Serial.print(F("Reading wlan config from SD card..."));
 	if (!readWlanConfig())
@@ -816,6 +821,13 @@ void AquaControl::init()
 	Serial.println(F(" Done."));
 	Serial.print(F("OTA updates enabled. Hostname: SBAQC, IP: "));
 	Serial.println(WiFi.localIP());
+#if defined(USE_WEBSERVER)
+	// Issue #8 (H4): advertise the web UI on the mDNS responder that
+	// ArduinoOTA.begin() already started with the hostname "SBAQC"
+	// (-> http://sbaqc.local/ for mDNS-capable clients; Android Chrome
+	// does not resolve mDNS, keep the IP/DHCP reservation path there).
+	MDNS.addService("http", "tcp", 80);
+#endif
 #endif
 	// Init the time mechanism (RTC or NTP)
 	initTimeKeeper();
@@ -832,7 +844,9 @@ void AquaControl::init()
 
 #if defined(USE_WEBSERVER)
 	Serial.print(F("Initializing Webserver..."));
-	_Server.begin();
+	// Issue #8 (H5): no _Server.begin() here - the server must not start
+	// listening before the route table exists. begin() happens once,
+	// after onNotFound() below.
 
 	// Main entry point
 	_Server.on("/", handleRoot);
@@ -942,7 +956,47 @@ void AquaControl::proceedCycle()
 #endif
 	// Handle OTA updates
 	ArduinoOTA.handle();
+	MDNS.update(); // Issue #8 (H4): LEAmDNS needs this to answer queries
 	yield(); // Prevent watchdog reset
+
+	// Issue #8 (H2): WiFi link supervision. After boot nothing looked at
+	// WiFi.status() again, so a single dropped association (AP roam/band
+	// steer, DHCP renewal glitch, router idle-kick) left the device in the
+	// router's client list (stale lease) but unreachable until power-cycled.
+	// Cheap non-blocking check every 5 s; reconnect on loss, hard-recover
+	// after 12 consecutive failures (~60 s). STA mode only - the AP
+	// fallback after a failed boot connect is intentional and must not be
+	// "repaired" away (a restart loop would make config unreachable).
+	//
+	// Issue #28 knowledge (2026-09-25 dropout forensics): the observed hang
+	// was NOT a WiFi drop - no wifi_disconnected line, loop itself wedged.
+	// This supervision therefore targets the OTHER failure mode ("in router
+	// list but unreachable"); it cannot rescue a wedged loop, but with the
+	// restart on 12 failures the device now self-recovers from the first
+	// mode instead of sitting dead for hours. Restart reason lands in the
+	// SD event log, so any restart is explained afterwards.
+	if (WiFi.getMode() == WIFI_STA && msNow - _wifiLastCheckMs >= 5000)
+	{
+		_wifiLastCheckMs = msNow;
+		if (WiFi.status() != WL_CONNECTED)
+		{
+			_wifiFailCount++;
+			Serial.printf("WiFi link down (last disconnect reason %u) - reconnecting (%u/12)\n",
+						  (unsigned)_lastWifiDisconnectReason, (unsigned)_wifiFailCount);
+			WiFi.reconnect();
+			if (_wifiFailCount >= 12)
+			{
+				Serial.println(F("WiFi link unrecoverable for 60 s - restarting"));
+				logEvent("wifi_supervision_restart: link down 60s, ESP.restart()");
+				ESP.restart();
+			}
+		}
+		else if (_wifiFailCount != 0)
+		{
+			_wifiFailCount = 0;
+			Serial.println(F("WiFi link restored"));
+		}
+	}
 #endif
 
 	// Check macro expiration (non-blocking timer)
@@ -971,12 +1025,6 @@ void AquaControl::proceedCycle()
 		}
 	}
 	_IsFirstCycle = false;
-
-#if defined(ESP8266)
-	// Issue #28: periodic heartbeat into the SD event log (paced to one write
-	// per 5 min; append-only design keeps it out of the PWM hot path).
-	logHeartbeat();
-#endif
 
 #if defined(USE_WEBSERVER)
 	// Hande the Webserver features
@@ -1273,13 +1321,6 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 			if (TestModeSetTime < (_aqc->CurrentSecOfDay - 60) || TestModeSetTime > _aqc->CurrentSecOfDay)
 			{
 				TestMode = false;
-				// Debug issue #26: per-channel test-mode expiry used to be silent -
-				// the UI showed sliders "stuck" with no explanation. Log it.
-				Serial.printf("%02u:%02u:%02u Test mode channel %u expired (last set %us ago)\n",
-							  (unsigned)hour(), (unsigned)minute(), (unsigned)second(),
-							  (unsigned)((_aqc && this >= _aqc->_PwmChannels && this < _aqc->_PwmChannels + PWM_CHANNELS)
-										 ? (unsigned)(this - _aqc->_PwmChannels) : 255u),
-							  (unsigned)(_aqc ? _aqc->CurrentSecOfDay - TestModeSetTime : 0));
 			}
 		}
 		else

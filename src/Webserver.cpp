@@ -25,6 +25,17 @@ extern DS3232RTC RTC;
 extern time_t getRTCTime();
 #endif
 
+// Issue #8 (H3): app.htm template substitution, factored out so handleRoot()
+// runs the exact same transformation in its measuring pass and its sending
+// pass - a substituted length that differs from the sent bytes would hang
+// the connection.
+static String substituteAppTemplate(String sLine, const char *tempText)
+{
+	sLine.replace("##FW_VERSION##", AQC_BUILD);
+	sLine.replace("##TEMP##", tempText);
+	return sLine;
+}
+
 void handleRoot()
 {
 	// Serve the new SPA UI (app.htm)
@@ -36,25 +47,43 @@ void handleRoot()
 		return;
 	}
 
-	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+	// Build the temperature replacement once; it must be byte-identical in
+	// both passes or the Content-Length below would be wrong.
+	char fullTemp[100];
+#if defined(USE_DS18B20_TEMP_SENSOR)
+	char tempBuf[60];
+	dtostrf(_aqc->_Temperature._TemperatureInCelsius, 1, 1, tempBuf);
+	sprintf(fullTemp, "Aktuelle Wassertemperatur %s &deg;C<br/>", tempBuf);
+#else
+	fullTemp[0] = '\0';
+#endif
+
+	// Issue #8 (H3): serve app.htm with a proper Content-Length instead of
+	// line-wise chunked streaming (CONTENT_LENGTH_UNKNOWN). Chunked delivery
+	// made every line its own TCP chunk and kept the single-threaded server
+	// busy much longer per page - exactly the burst pressure modern phones
+	// time out on. Pass 1 measures the substituted length...
+	size_t contentLength = 0;
+	while (myFile.available())
+	{
+		contentLength += substituteAppTemplate(myFile.readStringUntil(10), fullTemp).length();
+	}
+	myFile.close();
+
+	// ...pass 2 sends the identical bytes with the measured length, so the
+	// client knows when the response ends and the connection frees up at once.
+	myFile = SD.open(F("app.htm"));
+	if (!myFile)
+	{
+		_Server.send(500, "text/plain", "app.htm disappeared while serving");
+		return;
+	}
+	_Server.setContentLength(contentLength);
 	_Server.send(200, "text/html", "");
 	while (myFile.available())
 	{
-		String sLine = myFile.readStringUntil(10);
-		sLine.replace("##FW_VERSION##", AQC_BUILD);
-#if defined(USE_DS18B20_TEMP_SENSOR)
-		char tempBuf[60];
-		dtostrf(_aqc->_Temperature._TemperatureInCelsius, 1, 1, tempBuf);
-		char fullTemp[100];
-		sprintf(fullTemp, "Aktuelle Wassertemperatur %s &deg;C<br/>", tempBuf);
-		sLine.replace("##TEMP##", fullTemp);
-#else
-		sLine.replace("##TEMP##", "");
-#endif
-		_Server.sendContent(sLine);
+		_Server.sendContent(substituteAppTemplate(myFile.readStringUntil(10), fullTemp));
 	}
-
-	// close the file:
 	myFile.close();
 }
 
@@ -96,6 +125,18 @@ void handleNotFound()
 				ct = "image/jpeg";
 			else if (uri.endsWith(".gif"))
 				ct = "image/gif";
+
+			// Issue #8 (H3): cacheable assets only change on an SD re-image,
+			// but without cache headers phones re-download ~50 KB of JS/CSS on
+			// every single page load - a burst of parallel connections on a
+			// single-threaded server. Let them cache for a week. Deliberately
+			// NOT applied to .htm/.json/.cfg: those carry live config/state.
+			if (uri.endsWith(".js") || uri.endsWith(".css") || uri.endsWith(".png") ||
+				uri.endsWith(".jpg") || uri.endsWith(".jpeg") || uri.endsWith(".gif") ||
+				uri.endsWith(".ico") || uri.endsWith(".woff") || uri.endsWith(".woff2"))
+			{
+				_Server.sendHeader("Cache-Control", "max-age=604800");
+			}
 
 			_Server.streamFile(f, ct);
 			f.close();

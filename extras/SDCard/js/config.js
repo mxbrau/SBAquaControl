@@ -21,7 +21,7 @@ const CONFIG = {
     ],
 
     // Update intervals
-    statusUpdateInterval: 1000,      // Update status every second
+    statusUpdateInterval: 5000,      // Update status every 5 seconds (issue #8/H3: 1 s polling kept the single-threaded server under constant load)
     chartUpdateInterval: 60000,      // Refresh chart every 6 seconds
     sliderDebounceTime: 150,         // Wait 150ms after slider stops moving
 
