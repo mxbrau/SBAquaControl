@@ -97,6 +97,14 @@ void handleNotFound()
 			else if (uri.endsWith(".gif"))
 				ct = "image/gif";
 
+			// Issue #9: let browsers cache the static assets (the ~50 KB of JS
+			// was re-downloaded from the SD card on every visit). HTML stays
+			// uncached so UI updates apply immediately.
+			if (uri.endsWith(".css") || uri.endsWith(".js"))
+			{
+				_Server.sendHeader("Cache-Control", "public, max-age=3600");
+			}
+
 			_Server.streamFile(f, ct);
 			f.close();
 			return;
@@ -915,52 +923,156 @@ uint32_t computeMacroDuration(const String &macroId, String &outName)
 	return duration;
 }
 
+// Issue #9: RAM cache for the macro list. The list endpoint used to probe up
+// to 999 file names (one SD.exists per name, ~10-20 s per request). Instead
+// the macros/ directory is enumerated once and the result is cached; save and
+// delete invalidate the cache, so /api/macro/list is a pure RAM read.
+#define MACRO_CACHE_SIZE 16
+struct MacroEntry
+{
+	char id[24]; // e.g. "macro_001"
+	char name[32];
+	uint32_t duration;
+};
+static MacroEntry sMacroCache[MACRO_CACHE_SIZE];
+static uint8_t sMacroCacheCount = 0;
+static bool sMacroCacheValid = false;
+
+// Issue #9: (re)build the macro cache with a single directory walk.
+// Falls back to the 999-probe only if the directory cannot be opened
+// (very old SD library without directory enumeration support).
+static void rebuildMacroCache()
+{
+	sMacroCacheCount = 0;
+
+	File dir = SD.open("/macros");
+	if (dir && dir.isDirectory())
+	{
+		bool sawExtra = false;
+		while (true)
+		{
+			File entry = dir.openNextFile();
+			if (!entry)
+			{
+				break; // no more files
+			}
+			String entryName = entry.name();
+			entry.close();
+
+			// entry.name() may be "macro_001_ch00.cfg" or
+			// "/macros/macro_001_ch00.cfg" depending on the SD library.
+			int slash = entryName.lastIndexOf('/');
+			String base = (slash == -1) ? entryName : entryName.substring(slash + 1);
+
+			// One entry per macro: only the ch00 file identifies a macro.
+			if (!base.startsWith("macro_") || !base.endsWith("_ch00.cfg"))
+			{
+				continue;
+			}
+			String macroId = base.substring(0, base.length() - 9); // strip "_ch00.cfg"
+			if (macroId.length() == 0 || macroId.length() > 23)
+			{
+				continue;
+			}
+
+			if (sMacroCacheCount >= MACRO_CACHE_SIZE)
+			{
+				// More macros on the card than the list supports. This can
+				// only happen with files added outside the web UI (the save
+				// handler enforces the limit); keep walking so the warning
+				// below is accurate instead of truncating silently.
+				sawExtra = true;
+				continue;
+			}
+
+			String macroName;
+			uint32_t duration = 0;
+			if (!loadMacroMetadata(macroId, macroName, duration))
+			{
+				// No metadata: the duration was just computed with the
+				// 16-file fallback - persist it so that scan never runs
+				// again for this macro.
+				saveMacroMetadata(macroId, macroName, duration);
+			}
+
+			MacroEntry *slot = &sMacroCache[sMacroCacheCount++];
+			strncpy(slot->id, macroId.c_str(), sizeof(slot->id) - 1);
+			slot->id[sizeof(slot->id) - 1] = '\0';
+			strncpy(slot->name, macroName.c_str(), sizeof(slot->name) - 1);
+			slot->name[sizeof(slot->name) - 1] = '\0';
+			slot->duration = duration;
+		}
+		dir.close();
+		if (sawExtra)
+		{
+			Serial.print(F("WARN: "));
+			Serial.print(sMacroCacheCount);
+			Serial.println(F(" macros listed; extra macro files on the SD card exceed MACRO_CACHE_SIZE and are hidden"));
+		}
+	}
+	else
+	{
+		if (dir)
+		{
+			dir.close();
+		}
+		// No directory enumeration: legacy probe, kept as a fallback so the
+		// endpoint still works on SD libraries without openNextFile().
+		char sTempFilename[50];
+		for (uint16_t macroNum = 1; macroNum <= 999 && sMacroCacheCount < MACRO_CACHE_SIZE; macroNum++)
+		{
+			sprintf(sTempFilename, "macros/macro_%03u_ch00.cfg", macroNum);
+			if (SD.exists(sTempFilename))
+			{
+				char macroId[24];
+				sprintf(macroId, "macro_%03u", macroNum);
+				String macroName;
+				uint32_t duration = 0;
+				if (!loadMacroMetadata(macroId, macroName, duration))
+				{
+					// Persist what the 16-file fallback computed, so the
+					// next cache invalidation does not repeat the scan.
+					saveMacroMetadata(macroId, macroName, duration);
+				}
+				MacroEntry *slot = &sMacroCache[sMacroCacheCount++];
+				strncpy(slot->id, macroId, sizeof(slot->id) - 1);
+				slot->id[sizeof(slot->id) - 1] = '\0';
+				strncpy(slot->name, macroName.c_str(), sizeof(slot->name) - 1);
+				slot->name[sizeof(slot->name) - 1] = '\0';
+				slot->duration = duration;
+			}
+		}
+	}
+
+	sMacroCacheValid = true;
+}
+
 // API: GET /api/macro/list
 void handleApiMacroList()
 {
-	// List all macro files from macros/ directory
+	// Issue #9: serve from the RAM cache (one directory walk per
+	// save/delete, otherwise no SD I/O at all). Previously this probed
+	// up to 999 file names per request (~10-20 s).
+	if (!sMacroCacheValid)
+	{
+		rebuildMacroCache();
+	}
+
 	_Server.setContentLength(CONTENT_LENGTH_UNKNOWN);
 	_Server.send(200, "application/json", "");
 
 	_Server.sendContent("{\"macros\":[");
 
-	// Enumerate macro files: check for pattern macros/macro_NNN_ch00.cfg
-	// This identifies all macros by checking the first channel file
-	bool firstMacro = true;
-	for (uint16_t macroNum = 1; macroNum <= 999; macroNum++)
+	char entry[128];
+	for (uint8_t i = 0; i < sMacroCacheCount; i++)
 	{
-		char sTempFilename[50];
-		String sMacroPath = "macros/macro_";
-		sMacroPath += (macroNum <= 9 ? "00" : (macroNum <= 99 ? "0" : ""));
-		sMacroPath += String(macroNum);
-		sMacroPath += "_ch00.cfg";
-		sMacroPath.toCharArray(sTempFilename, 50);
-
-		if (SD.exists(sTempFilename))
+		if (i > 0)
 		{
-			if (!firstMacro)
-				_Server.sendContent(",");
-			firstMacro = false;
-
-			// Build macro ID (e.g., "macro_001")
-			String macroIdStr = sMacroPath.substring(7, sMacroPath.indexOf("_ch"));
-
-			// Compute duration and get name
-			String macroName;
-			uint32_t duration = computeMacroDuration(macroIdStr, macroName);
-
-			// Send JSON with id, name, and duration
-			// Use _Server.sendContent() to avoid buffer size concerns
-			_Server.sendContent("{\"id\":\"");
-			_Server.sendContent(macroIdStr);
-			_Server.sendContent("\",\"name\":\"");
-			_Server.sendContent(macroName);
-			_Server.sendContent("\",\"duration\":");
-			char durBuf[16];
-			sprintf(durBuf, "%lu", (unsigned long)duration);
-			_Server.sendContent(durBuf);
-			_Server.sendContent("}");
+			_Server.sendContent(",");
 		}
+		snprintf(entry, sizeof(entry), "{\"id\":\"%s\",\"name\":\"%s\",\"duration\":%lu}",
+			sMacroCache[i].id, sMacroCache[i].name, (unsigned long)sMacroCache[i].duration);
+		_Server.sendContent(entry);
 	}
 
 	_Server.sendContent("]}");
@@ -1101,6 +1213,7 @@ void handleApiMacroSave()
 	// Determine macro ID: use requested ID if it exists (edit mode), otherwise generate new one
 	String macroId;
 	char sTempFilename[50];
+	bool isNewMacro = false;
 
 	if (requestedMacroId.length() > 0 && requestedMacroId.startsWith("macro_"))
 	{
@@ -1116,6 +1229,7 @@ void handleApiMacroSave()
 		{
 			// Requested ID doesn't exist - treat as new macro with that ID
 			macroId = requestedMacroId;
+			isNewMacro = true;
 			Serial.print(F("➕ Creating new macro with requested ID: "));
 			Serial.println(macroId);
 		}
@@ -1139,8 +1253,30 @@ void handleApiMacroSave()
 		}
 
 		macroId = normalizedMacroId;
+		isNewMacro = true;
 		Serial.print(F("➕ Creating new macro: "));
 		Serial.println(macroId);
+	}
+
+	// Issue #9 (PR #17 review): the macro list cache can hold MACRO_CACHE_SIZE
+	// macros; enforce the same product limit when creating a new one so it can
+	// never silently disappear from /api/macro/list.
+	if (isNewMacro)
+	{
+		if (!sMacroCacheValid)
+		{
+			rebuildMacroCache();
+		}
+		if (sMacroCacheCount >= MACRO_CACHE_SIZE)
+		{
+			char limitBuf[96];
+			snprintf(limitBuf, sizeof(limitBuf),
+					 "{\"error\":\"macro limit reached (%u macros) - delete one first\"}",
+					 (unsigned int)MACRO_CACHE_SIZE);
+			_Server.send(400, "application/json", limitBuf);
+			Serial.println(F("Macro save rejected: limit reached"));
+			return;
+		}
 	}
 
 	// Parse macro name from request body
@@ -1408,6 +1544,9 @@ void handleApiMacroSave()
 	}
 	saveMacroMetadata(macroId, macroName, macroDuration);
 
+	// Issue #9: the set of macros changed - rebuild the list cache on demand.
+	sMacroCacheValid = false;
+
 	Serial.print(F("✅ Macro saved: "));
 	Serial.print(macroName);
 	Serial.print(F(" ("));
@@ -1578,6 +1717,9 @@ void handleApiMacroDelete()
 
 	Serial.print(F("🗑️  Macro deleted: "));
 	Serial.println(macroId);
+
+	// Issue #9: the set of macros changed - rebuild the list cache on demand.
+	sMacroCacheValid = false;
 
 	_Server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
