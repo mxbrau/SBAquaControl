@@ -57,6 +57,17 @@ static void printTime()
 	Serial.println(buf);
 }
 
+// Debug issue #26: every diagnostic line gets the current time-of-day prefix so
+// serial logs can be correlated with the schedule. Use for NEW state-transition
+// logs; retrofitting all 280 existing Serial.print sites is out of scope here.
+static void debugLog(const char *msg)
+{
+	char buf[16];
+	sprintf(buf, "%02u:%02u:%02u ", (unsigned)hour(), (unsigned)minute(), (unsigned)second());
+	Serial.print(buf);
+	Serial.println(msg);
+}
+
 #if defined(ESP8266)
 void AquaControl::initESP8266NetworkConnection()
 {
@@ -86,13 +97,30 @@ void AquaControl::initESP8266NetworkConnection()
 		WiFi.mode(WIFI_AP);
 		WiFi.softAPConfig(IPAddress(192, 168, 0, 1), IPAddress(192, 168, 0, 1), IPAddress(255, 255, 255, 0));
 		WiFi.softAP("SBAQC_WIFI", "sbaqc12345");
+		recordWifiEvent("boot-connect-failed", 0);
 	}
 	else
 	{
 		Serial.println(F(" Done."));
+		recordWifiEvent("connected", 0);
 	}
 	Serial.print(F("IP address: "));
 	Serial.println(WiFi.localIP());
+
+	// Debug issue #26: record disconnects (with reason) and re-connections in
+	// the ring buffer. Recording only - no reconnect/supervision behavior here.
+	WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &e)
+								   {
+									   if (_aqc)
+										   _aqc->recordWifiEvent("disconnected", e.reason);
+								   });
+	// onStationModeGotIP fires on both the initial association and every
+	// re-association, which is exactly the "reconnected" signal.
+	WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &)
+							{
+								if (_aqc)
+									_aqc->recordWifiEvent("reconnected", 0);
+							});
 }
 
 Option extractOptionFromConfigLine(String sLine)
@@ -1233,6 +1261,13 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 			if (TestModeSetTime < (_aqc->CurrentSecOfDay - 60) || TestModeSetTime > _aqc->CurrentSecOfDay)
 			{
 				TestMode = false;
+				// Debug issue #26: per-channel test-mode expiry used to be silent -
+				// the UI showed sliders "stuck" with no explanation. Log it.
+				Serial.printf("%02u:%02u:%02u Test mode channel %u expired (last set %us ago)\n",
+							  (unsigned)hour(), (unsigned)minute(), (unsigned)second(),
+							  (unsigned)((_aqc && this >= _aqc->_PwmChannels && this < _aqc->_PwmChannels + PWM_CHANNELS)
+										 ? (unsigned)(this - _aqc->_PwmChannels) : 255u),
+							  (unsigned)(_aqc ? _aqc->CurrentSecOfDay - TestModeSetTime : 0));
 			}
 		}
 		else
