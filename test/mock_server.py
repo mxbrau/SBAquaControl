@@ -708,6 +708,47 @@ def debug():
             if macro["channels"].get(ch)
         }
 
+    # Issue #26: per-channel PWM state mirror (Webserver.cpp handleApiDebug).
+    # Targets come from the schedule interpolation; test mode overrides them,
+    # exactly like the firmware's PwmChannel::proceedCycle.
+    now_s = current_seconds_of_day()
+    channels = []
+    for ch in range(CHANNELS):
+        targets = schedules.get(ch, [])
+        vx = 0
+        if targets:
+            resolved = sorted(targets, key=lambda t: t["time"])
+            points = [(t["time"], t["value"]) for t in resolved]
+            # find bracketing pair
+            lo, hi = points[0], points[-1] if len(points) > 1 else (points[0][0] + 86400, points[0][1])
+            for i in range(len(points) - 1):
+                t0, v0 = points[i]
+                t1, v1 = points[i + 1]
+                if t0 <= now_s < t1:
+                    lo, hi = (t0, v0), (t1, v1)
+                    break
+            else:
+                lo, hi = points[-1], (points[0][0] + 86400, points[0][1])
+            t0, v0 = lo
+            t1, v1 = hi
+            span = max(t1 - t0, 1)
+            frac = min(max((now_s - t0) / span, 0.0), 1.0)
+            # firmware interpolates linearly then clamps; but the clamp happens only toward the slope,
+            # mirroring exactly is out of scope: aim is shape parity, not bit parity.
+            vx = v0 + frac * (v1 - v0)
+        in_test = test_mode_active
+        target = int(test_values[ch] if in_test else round(vx))
+        state = {
+            "ch": ch,
+            "target": target,
+            "value": target,  # no slew modeling in the mock
+            "write": target,
+            "test_mode": in_test,
+            "test_value": test_values[ch],
+            "target_count": len(targets),
+        }
+        channels.append(state)
+
     return jsonify(
         {
             "free_heap": free_heap,
@@ -717,6 +758,7 @@ def debug():
             "vcc_voltage_mv": GET_VCC_MV,
             "cpu_freq_mhz": CPU_FREQ_MHZ,
             "macros": macro_sizes,
+            "channels": channels,
         }
     )
 

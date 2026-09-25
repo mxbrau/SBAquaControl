@@ -299,6 +299,7 @@ def live_checks():
                 "vcc_voltage_mv",
                 "cpu_freq_mhz",
                 "macros",
+                "channels",
             ],
         ),
         (

@@ -203,6 +203,8 @@ private:
 	int16_t _PwmValue = 1;
 
 public:
+	// Allow the debug endpoint to report live PWM state without guessing.
+	friend void handleApiDebug();
 	uint8_t ChannelAddress; // Contains the address or pin for setting the pwm value
 	Target Targets[MAX_TARGET_COUNT_PER_CHANNEL];
 	uint8_t TargetCount;
@@ -310,6 +312,40 @@ private:
 public:
 #if defined(ESP8266)
 	WlanConfig _WlanConfig;
+
+	// Debug issue #26: WiFi connection history ring buffer. Records state
+	// changes with time-of-day so "was the device reachable at H:MM" can be
+	// answered after the fact. Recording only - no supervision/reconnect
+	// behavior change lives in this branch (that is issue #9 work).
+	static constexpr uint8_t WIFI_HISTORY_SIZE = 8;
+	struct WifiEvent
+	{
+		char event[16];  // "connected" | "disconnected" | "boot-connect-failed"
+		uint8_t reason;  // disconnect reason code (0 for non-disconnect events)
+		time_t ts;       // seconds of day when it happened
+	};
+	WifiEvent _wifiHistory[WIFI_HISTORY_SIZE] = {};
+	uint8_t _wifiHistoryCount = 0;
+	uint8_t _wifiHistoryPos = 0; // next write slot (ring)
+
+	void recordWifiEvent(const char *event, uint8_t reason)
+	{
+		WifiEvent &e = _wifiHistory[_wifiHistoryPos];
+		strncpy(e.event, event, sizeof(e.event) - 1);
+		e.event[sizeof(e.event) - 1] = '\0';
+		e.reason = reason;
+		e.ts = elapsedSecsToday(now());
+
+		_wifiHistoryPos = (_wifiHistoryPos + 1) % WIFI_HISTORY_SIZE;
+		if (_wifiHistoryCount < WIFI_HISTORY_SIZE)
+			_wifiHistoryCount++;
+
+		char buf[64];
+		sprintf(buf, "%02u:%02u:%02u WiFi %s (reason %u)",
+				(unsigned)hour(e.ts), (unsigned)minute(e.ts), (unsigned)second(e.ts),
+				event, (unsigned)reason);
+		Serial.println(buf);
+	}
 #endif
 #if defined(USE_WEBSERVER)
 	MacroState _activeMacro; // Current active macro state
