@@ -1710,11 +1710,15 @@ void handleApiDebug()
 	_Server.sendContent(_aqc->_sdLogOk ? "true" : "false");
 	{
 		uint32_t logSize = _aqc->eventLogSize();
-		sprintf(buf, ",\"lines_this_boot\":%u,\"size_bytes\":%lu,\"last_n\":%u,\"last_events\":[",
-				(unsigned)_aqc->_logLineCount,
-				(unsigned long)logSize,
-				(unsigned)(_aqc->_sdLogOk ? 8 : 0));
-		_Server.sendContent(buf);
+		// Overflow guard (the same bug class as the 16-byte channel lines
+		// found on hardware 2026-09-25): this prefix alone is 63-76 bytes, so
+		// it needs its own buffer, NOT the 16-byte numeric helper.
+		char logBuf[92];
+		snprintf(logBuf, sizeof(logBuf), ",\"lines_this_boot\":%u,\"size_bytes\":%lu,\"last_n\":%u,\"last_events\":[",
+				 (unsigned)_aqc->_logLineCount,
+				 (unsigned long)logSize,
+				 (unsigned)(_aqc->_sdLogOk ? 8 : 0));
+		_Server.sendContent(logBuf);
 
 		if (_aqc->_sdLogOk && logSize > 0)
 		{

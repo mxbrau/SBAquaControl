@@ -60,6 +60,7 @@ static void printTime()
 // Debug issue #26: every diagnostic line gets the current time-of-day prefix so
 // serial logs can be correlated with the schedule. Use for NEW state-transition
 // logs; retrofitting all 280 existing Serial.print sites is out of scope here.
+static void debugLog(const char *msg) __attribute__((unused)); // used by behavior PRs; kept so the API exists from day one
 static void debugLog(const char *msg)
 {
 	char buf[16];
