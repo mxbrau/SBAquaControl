@@ -203,21 +203,14 @@ async function loadMacros() {
         const data = await API.getMacros();
 
         if (data.macros) {
-            // Load full details for each macro to get duration
-            state.macros = await Promise.all(data.macros.map(async (macro) => {
-                try {
-                    const details = await API.getMacro(macro.id);
-                    // Calculate duration from first channel's last target time
-                    let duration = 3600; // Default 1 hour
-                    if (details.channels && details.channels[0] && details.channels[0].targets.length > 0) {
-                        const targets = details.channels[0].targets;
-                        duration = targets[targets.length - 1].time;
-                    }
-                    return { ...macro, duration };
-                } catch (err) {
-                    console.warn(`⚠️ Could not load duration for ${macro.id}:`, err);
-                    return { ...macro, duration: 3600 }; // Fallback to 1 hour
-                }
+            // Issue #8/H3: the list endpoint already returns each macro's
+            // duration (max target time across all channels) - use it directly.
+            // The old code fired one /api/macro/get per macro IN PARALLEL here,
+            // an N+1 burst the single-threaded server could only serialize -
+            // page loads stalled for seconds and phones timed out.
+            state.macros = data.macros.map(macro => ({
+                ...macro,
+                duration: macro.duration > 0 ? macro.duration : 3600 // Fallback to 1 hour
             }));
             renderMacroList();
             console.log(`✅ ${state.macros.length} macros loaded`);
@@ -478,6 +471,11 @@ function startStatusUpdates() {
 }
 
 async function updateStatus() {
+    // Issue #8/H3: skip polling while the tab is hidden - background tabs
+    // otherwise poll the single-threaded server forever for nothing.
+    if (document.hidden) {
+        return;
+    }
     try {
         const data = await API.getStatus();
 
