@@ -15,7 +15,8 @@
 | test/test\_host\_unit.py       |       14 |        1 |     93% |        21 |
 | test/test\_live\_contract.py   |       23 |        2 |     91% |     28-29 |
 | test/test\_parity.py           |       12 |        0 |    100% |           |
-| **TOTAL**                      |  **906** |  **692** | **24%** |           |
+| test/test\_regressions.py      |       31 |        0 |    100% |           |
+| **TOTAL**                      |  **937** |  **692** | **26%** |           |
 
 
 ## Setup coverage badge
