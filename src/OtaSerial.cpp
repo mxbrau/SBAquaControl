@@ -27,7 +27,12 @@ void OtaSerialLogger::handle()
 	}
 	if (!_client || !_client.connected())
 	{
+#if defined(ESP8266)
+		// accept() replaces the deprecated WiFiServer::available() (issue #31)
+		WiFiClient nextClient = _server.accept();
+#else
 		WiFiClient nextClient = _server.available();
+#endif
 		if (nextClient)
 		{
 			_client = nextClient;
