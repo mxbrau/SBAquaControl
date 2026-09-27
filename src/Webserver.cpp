@@ -1879,7 +1879,12 @@ void handleApiDebug()
 				(unsigned)pwm.TargetCount);
 		_Server.sendContent(bigbuf);
 	}
-	_Server.sendContent("]}"); // Close channels array AND main JSON object
+	// Issue #37: close the channels ARRAY only. The root object stays open for
+	// the "log" key appended below; closing it here emitted that key after the
+	// root's closing brace, i.e. two concatenated fragments, so every JSON
+	// parser rejected the whole /api/debug response. The root's closing brace
+	// is emitted at the very end instead.
+	_Server.sendContent("]");
 
 	// Issue #28: event-log diagnostics - is the SD log alive and what did it
 	// record most recently (last lines, newest last)?
@@ -1959,6 +1964,9 @@ void handleApiDebug()
 			}
 		}
 		_Server.sendContent("]}");
+		// Issue #37: the "log" object is closed above; the ROOT object was left
+		// open when the channels array was closed, so close the root LAST.
+		_Server.sendContent("}");
 	}
 
 	// Also log to serial

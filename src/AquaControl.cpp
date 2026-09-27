@@ -780,6 +780,17 @@ void AquaControl::init()
 	}
 	Serial.println(F(" Done."));
 
+	// Issue #28: start the persistent event log immediately after the card
+	// comes up - the boot line lands in log/events.log before any network
+	// activity, and the reset reason of THIS boot is recorded for forensics.
+	//
+	// Issue #36: this call was silently deleted by 4ddd3d5 (the issue #8
+	// rebase). Without it _sdLogOk stays false forever, every logEvent() is
+	// a no-op, and /api/debug reports a permanently dead log - which is how
+	// the AP-fallback dropout of 2026-09-27 went undiagnosable. Do not let a
+	// hand-resolved rebase drop it again; test_firmware_build.py asserts it.
+	initEventLog();
+
 #if defined(ESP8266)
 	Serial.print(F("Reading wlan config from SD card..."));
 	if (!readWlanConfig())
