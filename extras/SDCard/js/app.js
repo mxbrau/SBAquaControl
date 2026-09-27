@@ -203,14 +203,17 @@ async function loadMacros() {
         const data = await API.getMacros();
 
         if (data.macros) {
-            // Issue #8/H3: the list endpoint already returns each macro's
-            // duration (max target time across all channels) - use it directly.
-            // The old code fired one /api/macro/get per macro IN PARALLEL here,
-            // an N+1 burst the single-threaded server could only serialize -
-            // page loads stalled for seconds and phones timed out.
-            state.macros = data.macros.map(macro => ({
+            // Issue #8/H3 + issue #9: the list endpoint already returns each
+            // macro's duration (max target time across all channels) - use it
+            // directly. The old code fired one /api/macro/get per macro IN
+            // PARALLEL here, an N+1 burst the single-threaded server could only
+            // serialize - page loads stalled for seconds and phones timed out.
+            // Full details are fetched lazily by editMacro() only for the macro
+            // the user actually opens. A duration of 0 is legitimate, so test
+            // for null/undefined rather than for a positive value.
+            state.macros = data.macros.map((macro) => ({
                 ...macro,
-                duration: macro.duration > 0 ? macro.duration : 3600 // Fallback to 1 hour
+                duration: (macro.duration != null) ? macro.duration : 3600, // Fallback to 1 hour
             }));
             renderMacroList();
             console.log(`✅ ${state.macros.length} macros loaded`);
