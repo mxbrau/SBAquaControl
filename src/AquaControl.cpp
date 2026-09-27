@@ -963,33 +963,27 @@ void AquaControl::proceedCycle()
 	// WiFi.status() again, so a single dropped association (AP roam/band
 	// steer, DHCP renewal glitch, router idle-kick) left the device in the
 	// router's client list (stale lease) but unreachable until power-cycled.
-	// Cheap non-blocking check every 5 s; reconnect on loss, hard-recover
-	// after 12 consecutive failures (~60 s). STA mode only - the AP
-	// fallback after a failed boot connect is intentional and must not be
-	// "repaired" away (a restart loop would make config unreachable).
+	// Cheap non-blocking check every 5 s; reconnect on loss. STA mode only -
+	// the AP fallback after a failed boot connect is intentional and must not
+	// be "repaired" away.
 	//
-	// Issue #28 knowledge (2026-09-25 dropout forensics): the observed hang
-	// was NOT a WiFi drop - no wifi_disconnected line, loop itself wedged.
-	// This supervision therefore targets the OTHER failure mode ("in router
-	// list but unreachable"); it cannot rescue a wedged loop, but with the
-	// restart on 12 failures the device now self-recovers from the first
-	// mode instead of sitting dead for hours. Restart reason lands in the
-	// SD event log, so any restart is explained afterwards.
+	// We deliberately do NOT restart on prolonged failure: the boot connect
+	// above has a 10 s timeout (20 x 500 ms). If the router is slow to hand
+	// out a lease right after a restart, the retry can miss that window and
+	// drop into AP fallback mode ("SBAQC_WIFI"), where the device sits until
+	// a power cycle. Observed in the field on 2026-09-27: the device came
+	// back in AP mode and needed a manual restart. A transient disconnect is
+	// strictly better than an unreachable AP you cannot reach, so we keep
+	// reconnecting and let the SD event log record what happened.
 	if (WiFi.getMode() == WIFI_STA && msNow - _wifiLastCheckMs >= 5000)
 	{
 		_wifiLastCheckMs = msNow;
 		if (WiFi.status() != WL_CONNECTED)
 		{
 			_wifiFailCount++;
-			Serial.printf("WiFi link down (last disconnect reason %u) - reconnecting (%u/12)\n",
+			Serial.printf("WiFi link down (last disconnect reason %u) - reconnecting (%u)\n",
 						  (unsigned)_lastWifiDisconnectReason, (unsigned)_wifiFailCount);
 			WiFi.reconnect();
-			if (_wifiFailCount >= 12)
-			{
-				Serial.println(F("WiFi link unrecoverable for 60 s - restarting"));
-				logEvent("wifi_supervision_restart: link down 60s, ESP.restart()");
-				ESP.restart();
-			}
 		}
 		else if (_wifiFailCount != 0)
 		{
