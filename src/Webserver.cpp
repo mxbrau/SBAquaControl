@@ -715,6 +715,7 @@ void handleApiTestUpdate()
 			int value = valueStr.toInt();
 			value = max(0, min(100, value));
 			_aqc->_PwmChannels[ch].TestValue = (uint8_t)value;
+			_aqc->_PwmChannels[ch].TestMode = true; // re-arm after the 60 s expiry (0fb2000)
 			_aqc->_PwmChannels[ch].TestModeSetTime = _aqc->CurrentSecOfDay;
 			ch++;
 			pos = nextComma + 1;
@@ -746,6 +747,7 @@ void handleApiTestUpdate()
 			if (channel < 6)
 			{
 				_aqc->_PwmChannels[channel].TestValue = (uint8_t)value;
+				_aqc->_PwmChannels[channel].TestMode = true; // re-arm after the 60 s expiry (0fb2000)
 				_aqc->_PwmChannels[channel].TestModeSetTime = _aqc->CurrentSecOfDay;
 			}
 		}

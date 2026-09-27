@@ -1321,6 +1321,17 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 			if (TestModeSetTime < (_aqc->CurrentSecOfDay - 60) || TestModeSetTime > _aqc->CurrentSecOfDay)
 			{
 				TestMode = false;
+				// Debug issue #26 (lost in the PR-#20 merge, restored here): the
+				// per-channel expiry used to be silent - the UI showed sliders
+				// "stuck" with no explanation.
+				uint8_t chIdx = 255;
+				for (uint8_t k = 0; k < PWM_CHANNELS; k++)
+					if (&_aqc->_PwmChannels[k] == this)
+						chIdx = k;
+				Serial.printf("%02u:%02u:%02u Test mode channel %u expired (last set %us ago)\n",
+							  (unsigned)hour(), (unsigned)minute(), (unsigned)second(),
+							  (unsigned)chIdx,
+							  (unsigned)(_aqc->CurrentSecOfDay - TestModeSetTime));
 			}
 		}
 		else
