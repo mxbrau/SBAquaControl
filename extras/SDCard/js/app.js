@@ -387,15 +387,36 @@ async function addTargetAtTime() {
 
 // Save schedule
 async function saveSchedule() {
+    // Issue #40: a channel that fails to save must not be papered over by a
+    // single "saved" alert at the end. API.saveSchedule throws on a non-2xx (and
+    // the firmware now returns 400/500 for a rejected or unpersisted save), so
+    // track per-channel outcomes and report exactly what did not stick.
+    const failed = [];
+    const truncated = [];
     try {
-        // Save all channels using densified sampled schedules from chart
+        // Save all channels using sampled schedules from chart
         for (let channel = 0; channel < 6; channel++) {
-            const targets = buildSampledTargetsForChannel(channel);
-            await API.saveSchedule(channel, targets);
+            const { targets, truncatedFrom } = buildSampledTargetsForChannel(channel);
+            if (truncatedFrom !== null) {
+                truncated.push(`Kanal ${channel}: ${truncatedFrom} → ${targets.length} Punkte (Limit ${MAX_TARGETS})`);
+            }
+            try {
+                await API.saveSchedule(channel, targets);
+            } catch (channelError) {
+                console.error(`❌ Channel ${channel} save failed:`, channelError);
+                failed.push(`Kanal ${channel}: ${channelError.message}`);
+            }
         }
 
-        alert('Zeitplan gespeichert!');
-        console.log('✅ Schedule saved');
+        if (truncated.length > 0) {
+            alert('Zeitplan gespeichert, aber Zeitpunkte gekürzt:\n' + truncated.join('\n'));
+        }
+        if (failed.length > 0) {
+            alert('Speichern fehlgeschlagen für:\n' + failed.join('\n'));
+        } else {
+            alert('Zeitplan gespeichert!');
+        }
+        console.log('✅ Schedule save finished', { failed, truncated });
     } catch (error) {
         console.error('❌ Schedule save failed:', error);
         alert('Fehler beim Speichern: ' + error.message);
@@ -429,9 +450,19 @@ async function deleteAllSchedules() {
 }
 
 // Build sanitized, capped target list from sampled chart data
+//
+// MAX_TARGETS must match MAX_TARGET_COUNT_PER_CHANNEL for the ESP8266 build
+// (32 - src/AquaControl_config.h). Issue #40: this used to be 128 with the
+// comment "align with ESP8266 firmware cap", left over from when the firmware
+// cap really was 128. The UI happily POSTed 128 targets, PwmChannel::addTarget
+// refused everything past 32, and because the surplus was dropped silently the
+// user got a schedule silently truncated to 05:00-05:10 - the rest of the day
+// gone, with a success message. The firmware now rejects an over-long list with
+// a 400 instead of pretending it saved, so an out-of-sync SD card fails loudly
+// rather than quietly destroying the evening schedule.
+const MAX_TARGETS = 32; // = MAX_TARGET_COUNT_PER_CHANNEL (ESP8266)
 function buildSampledTargetsForChannel(channel) {
-    const MAX_TARGETS = 128; // align with ESP8266 firmware cap
-    if (!mainChart || !mainChart.sampledSchedules) return [];
+    if (!mainChart || !mainChart.sampledSchedules) return { targets: [], truncatedFrom: null };
     const samples = mainChart.sampledSchedules[channel] || [];
 
     // Map to simple {time,value} and sanitize
@@ -457,12 +488,24 @@ function buildSampledTargetsForChannel(channel) {
         }
     }
 
-    // Cap to MAX_TARGETS
+    // Cap to MAX_TARGETS. Issue #40: the firmware enforces the same limit and
+    // now rejects an over-long list with a 400, so truncating here is what keeps
+    // the request acceptable - but it must not be silent, or the user loses the
+    // tail of the day (which is exactly what a 128-vs-32 mismatch did: the day
+    // was cut off at ~05:10 while the UI reported success).
+    let truncatedFrom = null;
     if (unique.length > MAX_TARGETS) {
-        unique = unique.slice(0, MAX_TARGETS);
+        truncatedFrom = unique.length;
+        // Keep the LAST entry as well as the first MAX_TARGETS-1: the chart
+        // appends an {x: 86400} end-of-day sentinel that carries the schedule's
+        // final value, and dropping it would let the interpolation ramp into the
+        // next day's first target instead of holding that value.
+        const tail = unique[unique.length - 1];
+        unique = unique.slice(0, MAX_TARGETS - 1).concat([tail]);
+        console.warn(`Channel ${channel}: ${truncatedFrom} targets exceed the ${MAX_TARGETS} limit, dropping ${truncatedFrom - MAX_TARGETS}`);
     }
 
-    return unique;
+    return { targets: unique, truncatedFrom: truncatedFrom };
 }
 
 // Status updates
