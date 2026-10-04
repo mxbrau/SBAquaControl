@@ -426,6 +426,13 @@ bool AquaControl::readLedConfig()
 			}
 			else
 			{
+				// Issue #29: count what the file offered so we can tell whether
+				// loading had to repair anything. addTarget() now maintains the
+				// ascending-unique invariant by itself, so a file that still
+				// contains duplicate times or an unsorted tail is repaired in RAM
+				// simply by loading it - lines that collapse onto an already
+				// scheduled second do not increase TargetCount.
+				uint16_t linesRead = 0;
 				while (pwmFile.available())
 				{
 					// First line is always the time
@@ -479,8 +486,30 @@ bool AquaControl::readLedConfig()
 					}
 					Target target;
 					target.Time = targetTime;
-					target.Value = sValue.toInt();
-					_PwmChannels[i].addTarget(target);
+					// Issue #29: clamp to the documented 0-100 range. This used to
+					// truncate a hand-edited out-of-range value into the uint8_t
+					// silently, producing schedules above 100% that then had to be
+					// re-clamped on every save.
+					int value = sValue.toInt();
+					target.Value = (uint8_t)max(0, min(100, value));
+					if (_PwmChannels[i].addTarget(target) == PwmChannel::ADD_TARGET_FULL)
+					{
+						Serial.printf("ledch_%02u: more than %u targets, ignoring %ld;%d\n",
+									  (unsigned)i, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL,
+									  (long)targetTime, (int)target.Value);
+					}
+					linesRead++;
+				}
+				pwmFile.close();
+
+				// Write the repaired schedule back so the SD file stops being a
+				// source of the same broken data on every boot, and say so once.
+				if (linesRead != _PwmChannels[i].TargetCount)
+				{
+					Serial.printf("Schedule normalized for channel %u (%u targets kept from %u lines)\n",
+								  (unsigned)i, (unsigned)_PwmChannels[i].TargetCount,
+								  (unsigned)linesRead);
+					writeLedConfig(i);
 				}
 			}
 		}
@@ -524,12 +553,24 @@ bool AquaControl::writeTargetsToFile(const String &pathPrefix, uint8_t channel, 
 	{
 		Target tTarget = pwmChannel.Targets[t];
 
-		// Format time as HH:MM
-		uint8_t iHour = hour(tTarget.Time);
-		uint8_t iMinute = minute(tTarget.Time);
-
+		// Issue #40: hour()/minute() can never report 24, so a Time of 86400
+		// (the end-of-day target the web UI appends, and the value readLedConfig
+		// produces for a literal "24:00" line) used to be written as "00:00" and
+		// came back as a Time 0 target on the next boot - silently turning
+		// "hold this value until midnight" into "start the day at this value",
+		// and colliding with a genuine midnight target. Emit 24:00 explicitly so
+		// the round-trip is lossless. readLedConfig (AquaControl.cpp:475-479)
+		// already maps 24:00 back to 86400, and test/mock_server.py writes
+		// 24:00 for the same input, so firmware and mock now agree here.
 		char timeBuf[8];
-		sprintf(timeBuf, "%02d:%02d", iHour, iMinute);
+		if (tTarget.Time >= (60 * 60 * 24))
+		{
+			sprintf(timeBuf, "24:00");
+		}
+		else
+		{
+			sprintf(timeBuf, "%02d:%02d", hour(tTarget.Time), minute(tTarget.Time));
+		}
 		configFile.print(timeBuf);
 
 		// Write separator and value
@@ -1169,38 +1210,77 @@ IPAddress AquaControl::extractIPAddress(const String &sIP)
 }
 #endif
 
+// Issues #29 + #40: Targets[] is the single source of truth for a channel's
+// schedule, and TWO functions have to agree on its order - this insert and the
+// target search in proceedCycle() below. They used to disagree:
+//
+//   - this function sorted on elapsedSecsToday(t.Time), which the Time library
+//     defines as (t % SECS_PER_DAY) - AquaControl.cpp:1181-1184 (old)
+//   - proceedCycle() searched on the RAW Targets[t].Time - AquaControl.cpp:1259
+//
+// Any target with Time >= 86400 therefore sorted to the FRONT of the array while
+// still comparing greater than every "now", so the day-wrap branch of the search
+// picked it as the next target 86400 times a second and interpolated against its
+// neighbour. The web UI appends exactly such a target on every render of the
+// main chart (extras/SDCard/js/chart-manager.js:154-156 pushes {x: 86400}), so
+// every save flattened the channel to a constant value - 0% (lights off) whenever
+// the schedule ended with the lights off. Fix: sort and search on the SAME key,
+// the raw Targets[].Time, and keep the array strictly ascending in it.
+//
+// Returns the index the target occupies, or ADD_TARGET_FULL (0xFF) when the
+// channel is already at MAX_TARGET_COUNT_PER_CHANNEL and the target was NOT
+// stored. Callers must check for ADD_TARGET_FULL: overrunning the cap silently
+// truncated saves to the first 32 targets of the day (see app.js MAX_TARGETS).
+//
+// Issue #29: a target whose Time already exists now REPLACES that entry's value
+// instead of appending a duplicate, so Targets[] can no longer contain two
+// entries for the same second. That removes the "duplicate time-0" and
+// "unsorted tail" states at the source rather than sanitising them later, and it
+// makes the later edit win, which is what the user sees in the chart.
 uint8_t PwmChannel::addTarget(Target t)
 {
+	// First index whose Time is >= the new one. That is the insert position, and
+	// when the Times are equal it is the entry to replace.
+	//
+	// The comparison MUST be ">=" here, not ">": scanning for the first entry
+	// strictly greater than t.Time steps PAST an exact match (that entry is not
+	// > t.Time) and lands after it, so a same-second target would insert as a
+	// duplicate instead of replacing. Verified by the host unit test
+	// test_addtarget_replaces_duplicate_time.
+	uint8_t pos = 0;
+	while (pos < TargetCount && Targets[pos].Time < t.Time)
+	{
+		pos++;
+	}
 
+	if (pos < TargetCount && Targets[pos].Time == t.Time)
+	{
+		// Same second already scheduled - the newer value wins, position is kept.
+		// Checked BEFORE the capacity test because replacing stores no new slot,
+		// so a channel that is exactly full must still accept an edit to a time
+		// it already holds (the UI's "set this timepoint" flow depends on it).
+		Targets[pos].Value = t.Value;
+		return pos;
+	}
+
+	// Genuinely a new second, so it needs a slot. This is the only place the cap
+	// can be hit, and it must be checked BEFORE the shift below: that loop writes
+	// Targets[TargetCount], which is out of bounds once TargetCount has reached
+	// MAX_TARGET_COUNT_PER_CHANNEL.
 	if (TargetCount >= MAX_TARGET_COUNT_PER_CHANNEL)
 	{
-		return -1;
+		return ADD_TARGET_FULL;
 	}
-	else
+
+	// Make room by moving the following targets one slot to the right. The guard
+	// above keeps TargetCount <= MAX-1, so Targets[TargetCount] is in bounds.
+	for (uint8_t n = TargetCount; n > pos; n--)
 	{
-		time_t newTargetTime = elapsedSecsToday(t.Time);
-		for (uint8_t i = 0; i < TargetCount - 1; i++)
-		{
-			time_t currentTime = elapsedSecsToday(Targets[i].Time);
-			if (newTargetTime < currentTime)
-			{
-				// We have to put in the new target before the current one to keep the right time order
-				// First move all following targets one slot to right
-				for (uint8_t n = TargetCount; n > i; n--)
-				{
-					Targets[n] = Targets[n - 1];
-				}
-				// Now insert the new target
-				Targets[i] = t;
-				TargetCount++;
-				return i;
-			}
-		}
-		// If no target was inserted, the the new target must be placed at the end of the list
-		Targets[TargetCount] = t;
-		TargetCount++;
-		return TargetCount;
+		Targets[n] = Targets[n - 1];
 	}
+	Targets[pos] = t;
+	TargetCount++;
+	return pos;
 }
 
 bool PwmChannel::removeTargetAt(uint8_t pos)
@@ -1253,7 +1333,18 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 		}
 		else
 		{
-			// find the current and last target
+			// Find the current and last target.
+			//
+			// Issue #40: this search MUST use the same ordering key that
+			// addTarget() inserts with, or a target can sit at an index the
+			// search will never reach as "next". The key is the RAW
+			// Targets[t].Time, and addTarget() guarantees Targets[] is strictly
+			// ascending in it, so the first entry greater than now is the
+			// correct next target. It previously searched raw Time while
+			// addTarget() inserted on (Time % 86400); the web UI's end-of-day
+			// sentinel (Time 86400) therefore landed at index 0 yet still
+			// compared greater than every now, and this loop selected it 86400
+			// times a second - flattening the channel to a constant value.
 			for (uint8_t t = 0; t < TargetCount; t++)
 			{
 				if (Targets[t].Time > CurrentSecOfDay)
@@ -1275,7 +1366,10 @@ void PwmChannel::proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec)
 					break;
 				}
 			}
-			// if no target was found (current time is later than the last target in this day)
+			// if no target was found (current time is later than the last target in this day).
+			// Unreachable while a Time 86400 entry exists (it is > any now), so
+			// this is the plain day-wrap: hold the last target and ramp towards
+			// the first target of the next day.
 			if (!bTargetFound)
 			{
 				// take the first target of the next day (simply the first target in the pool)
@@ -1496,7 +1590,16 @@ bool AquaControl::activateMacro(const String &macroId, uint32_t duration)
 					Target t;
 					t.Time = timeVal;
 					t.Value = (uint8_t)value;
-					_PwmChannels[ch].addTarget(t);
+					// Issue #40: report instead of silently truncating a macro
+					// that carries more steps than a channel can hold.
+					// (Use the macroId parameter, not _activeMacro.macroId - the
+					// struct is only populated after this loop.)
+					if (_PwmChannels[ch].addTarget(t) == PwmChannel::ADD_TARGET_FULL)
+					{
+						Serial.printf("macro %s ch%02u: over %u targets, ignoring step %lds\n",
+									  macroId.c_str(), (unsigned)ch,
+									  (unsigned)MAX_TARGET_COUNT_PER_CHANNEL, (long)timeVal);
+					}
 				}
 				macroFile.close();
 				_PwmChannels[ch].HasToWritePwm = true; // Force PWM update

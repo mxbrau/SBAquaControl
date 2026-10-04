@@ -384,11 +384,18 @@ void handleApiScheduleSave()
 		return;
 	}
 
-	// Clear existing targets
-	for (uint8_t t = 0; t < MAX_TARGET_COUNT_PER_CHANNEL; t++)
-	{
-		_aqc->_PwmChannels[channel].removeTargetAt(0);
-	}
+	// Issue #40: parse the whole body into a scratch channel FIRST and only
+	// commit once parsing is known to have succeeded. This handler used to clear
+	// the live channel up front and then re-add whatever the ad-hoc parser
+	// recovered, so any shortfall - a truncated body, a missing "targets":[ marker,
+	// a parse that yielded nothing - left the channel at TargetCount == 0. That is
+	// an explicit "lights off" state (PwmChannel::proceedCycle forces
+	// _PwmTarget/_PwmValue/CurrentWriteValue to 0 when TargetCount == 0), so a
+	// failed parse silently blacked out a channel that had a working schedule -
+	// while still answering 200 {"status":"ok"}. Build then swap.
+	PwmChannel parsed;
+	unsigned int objectsSeen = 0; // '{' we walked over, to tell "empty" from "unparseable"
+	unsigned int overflowed = 0;  // targets refused because the channel is full
 
 	// Parse targets array
 	int targetsIdx = body.indexOf("\"targets\":[");
@@ -408,6 +415,7 @@ void handleApiScheduleSave()
 			int objEnd = targetsStr.indexOf('}', objStart);
 			if (objEnd == -1)
 				break;
+			objectsSeen++;
 
 			String obj = targetsStr.substring(objStart + 1, objEnd);
 
@@ -424,6 +432,10 @@ void handleApiScheduleSave()
 				if (timeStr.startsWith("\""))
 					timeStr = timeStr.substring(1, timeStr.length() - 1);
 				long targetTime = parseTimeToSeconds(timeStr);
+				// 86400 stays reachable on purpose: the web UI's end-of-day
+				// sentinel is a legitimate Time (issue #40), and addTarget()
+				// orders by the raw Time so it sorts last and behaves as
+				// "hold this value until midnight".
 				targetTime = max(0L, min(86400L, targetTime));
 
 				// Parse value
@@ -443,7 +455,13 @@ void handleApiScheduleSave()
 					Target t;
 					t.Time = targetTime;
 					t.Value = finalValue;
-					_aqc->_PwmChannels[channel].addTarget(t);
+					// Issue #40: a full channel used to drop the surplus
+					// silently, truncating the day to whatever happened to be
+					// earliest. Count it so the caller can be told instead.
+					if (parsed.addTarget(t) == PwmChannel::ADD_TARGET_FULL)
+					{
+						overflowed++;
+					}
 				}
 			}
 
@@ -451,8 +469,52 @@ void handleApiScheduleSave()
 		}
 	}
 
-	// Persist to SD card
-	_aqc->writeLedConfig(channel);
+	// Objects were present but none of them parsed. Treat that as a bad request
+	// and leave the existing schedule untouched. (A genuinely empty "targets":[]
+	// is a legitimate "clear this channel" and still falls through to commit.)
+	if (objectsSeen > 0 && parsed.TargetCount == 0)
+	{
+		Serial.printf("Schedule save for channel %u rejected: %u object(s) parsed, none usable\n",
+					  (unsigned)channel, (unsigned)objectsSeen);
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Could not parse any target - schedule unchanged\"}");
+		return;
+	}
+
+	// More targets than a channel can hold. Reject rather than persist a silently
+	// shortened day; the web UI caps at the same limit (app.js MAX_TARGETS).
+	if (overflowed > 0)
+	{
+		Serial.printf("Schedule save for channel %u rejected: %u target(s) over the %u limit\n",
+					  (unsigned)channel, (unsigned)overflowed,
+					  (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		char err[96];
+		sprintf(err, "{\"error\":\"Too many targets - max %u per channel\",\"max_targets\":%u}",
+				(unsigned)MAX_TARGET_COUNT_PER_CHANNEL, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		_Server.send(400, "application/json", err);
+		return;
+	}
+
+	// Commit: copy the schedule across without disturbing the live channel's
+	// PWM/test-mode state (a schedule save must not silently exit test mode).
+	_aqc->_PwmChannels[channel].TargetCount = parsed.TargetCount;
+	for (uint8_t i = 0; i < parsed.TargetCount; i++)
+	{
+		_aqc->_PwmChannels[channel].Targets[i] = parsed.Targets[i];
+	}
+	_aqc->_PwmChannels[channel].HasToWritePwm = true;
+
+	// Persist to SD card. Issue #40: the result was discarded, so a failed write
+	// (SD full, card removed, file locked) still reported success and the change
+	// was lost on the next boot.
+	if (!_aqc->writeLedConfig(channel))
+	{
+		Serial.printf("Schedule save for channel %u FAILED to persist to SD\n",
+					  (unsigned)channel);
+		_Server.send(500, "application/json",
+					 "{\"error\":\"Saved in RAM but could not write the SD config\"}");
+		return;
+	}
 	_aqc->_IsFirstCycle = true;
 
 	char buf[64];
@@ -593,24 +655,35 @@ void handleApiTargetAdd()
 		return;
 	}
 
-	// Remove existing target at same time if present
-	for (uint8_t i = 0; i < _aqc->_PwmChannels[channel].TargetCount; i++)
-	{
-		if (_aqc->_PwmChannels[channel].Targets[i].Time == targetTime)
-		{
-			_aqc->_PwmChannels[channel].removeTargetAt(i);
-			break;
-		}
-	}
-
-	// Add new target
+	// Issue #29: no manual "remove the target at this time" pass any more.
+	// addTarget() replaces the value of an existing entry with the same Time and
+	// keeps the array ascending-unique, which is exactly what that loop was
+	// trying to achieve by hand - and it is the only thing that keeps duplicates
+	// and an unsorted tail from reappearing in the saved file.
+	//
+	// Issue #40: check the result. A full channel silently dropped the target
+	// before, and the caller was told it had been added.
 	Target t;
 	t.Time = targetTime;
 	t.Value = finalValue;
-	_aqc->_PwmChannels[channel].addTarget(t);
+	if (_aqc->_PwmChannels[channel].addTarget(t) == PwmChannel::ADD_TARGET_FULL)
+	{
+		Serial.printf("Target add rejected: channel %u already holds %u targets\n",
+					  (unsigned)channel, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		char err[96];
+		sprintf(err, "{\"error\":\"Channel already holds %u targets\",\"max_targets\":%u}",
+				(unsigned)MAX_TARGET_COUNT_PER_CHANNEL, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		_Server.send(400, "application/json", err);
+		return;
+	}
 
-	// Persist to SD
-	_aqc->writeLedConfig(channel);
+	// Persist to SD - issue #40: do not report success if the write failed.
+	if (!_aqc->writeLedConfig(channel))
+	{
+		_Server.send(500, "application/json",
+					 "{\"error\":\"Added in RAM but could not write the SD config\"}");
+		return;
+	}
 	_aqc->_IsFirstCycle = true;
 
 	Serial.print(F("Added target: ch="));
