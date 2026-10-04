@@ -451,12 +451,18 @@ def save_schedule():
         else 0
     )
     if objects_seen > 0 and usable_seen == 0:
-        print(f"✗ Save rejected for channel {channel}: {objects_seen} object(s), none usable")
-        return jsonify({"error": "Could not parse any target - schedule unchanged"}), 400
+        print(
+            f"✗ Save rejected for channel {channel}: {objects_seen} object(s), none usable"
+        )
+        return jsonify(
+            {"error": "Could not parse any target - schedule unchanged"}
+        ), 400
 
     # Issue #40: refuse to silently truncate the day.
     if overflow > 0:
-        print(f"✗ Save rejected for channel {channel}: {overflow} target(s) over {MAX_TARGETS}")
+        print(
+            f"✗ Save rejected for channel {channel}: {overflow} target(s) over {MAX_TARGETS}"
+        )
         return (
             jsonify(
                 {
@@ -524,7 +530,9 @@ def add_target():
         normalize_targets(schedules.get(channel, [])), new_target
     )
     if not ok:
-        print(f"✗ Target add rejected: channel {channel} already holds {MAX_TARGETS} targets")
+        print(
+            f"✗ Target add rejected: channel {channel} already holds {MAX_TARGETS} targets"
+        )
         return (
             jsonify(
                 {
@@ -560,7 +568,9 @@ def delete_target():
         time_value = int(time_value)
 
     current_targets, _ = dedupe_and_sort(
-        normalize_targets([t for t in schedules.get(channel, []) if t["time"] != time_value])
+        normalize_targets(
+            [t for t in schedules.get(channel, []) if t["time"] != time_value]
+        )
     )
     schedules[channel] = current_targets
     save_schedules_to_disk()
@@ -676,7 +686,9 @@ def macro_save():
         ch = int(entry.get("channel", 0))
         if 0 <= ch < CHANNELS:
             # Issue #29: macros get the same unique-times/ascending treatment.
-            channels[ch], _ = dedupe_and_sort(normalize_targets(entry.get("targets", [])))
+            channels[ch], _ = dedupe_and_sort(
+                normalize_targets(entry.get("targets", []))
+            )
 
     duration = int(data.get("duration", 0) or 0)
     if duration == 0:
@@ -838,7 +850,10 @@ def debug():
             resolved = sorted(targets, key=lambda t: t["time"])
             points = [(t["time"], t["value"]) for t in resolved]
             # find bracketing pair
-            lo, hi = points[0], points[-1] if len(points) > 1 else (points[0][0] + 86400, points[0][1])
+            lo, hi = (
+                points[0],
+                points[-1] if len(points) > 1 else (points[0][0] + 86400, points[0][1]),
+            )
             for i in range(len(points) - 1):
                 t0, v0 = points[i]
                 t1, v1 = points[i + 1]

@@ -106,12 +106,16 @@ def test_addtarget_replaces_duplicate_time_in_place():
     test_addtarget_replaces_duplicate_time in test_pwm_logic.cpp.
     """
     add = _body(_read(AQUA), "uint8_t PwmChannel::addTarget(Target t)")
-    assert re.search(r"while \(pos < TargetCount && Targets\[pos\]\.Time < t\.Time\)", add), (
+    assert re.search(
+        r"while \(pos < TargetCount && Targets\[pos\]\.Time < t\.Time\)", add
+    ), (
         "addTarget must scan with 'Targets[pos].Time < t.Time' so the loop stops "
         "ON an exact match. With '<=' (or '>') it steps past the matching entry "
         "and inserts a duplicate time instead of replacing it (issue #29)"
     )
-    assert re.search(r"if \(pos < TargetCount && Targets\[pos\]\.Time == t\.Time\)", add), (
+    assert re.search(
+        r"if \(pos < TargetCount && Targets\[pos\]\.Time == t\.Time\)", add
+    ), (
         "addTarget must detect the exact-match case and replace that entry's "
         "Value in place, so Targets[] cannot contain two entries for the same "
         "second (issue #29)"
@@ -163,7 +167,6 @@ def test_schedule_save_does_not_clear_before_parsing():
     200 {"status":"ok"} (issue #40). Parsing must target a scratch channel.
     """
     handler = _body(_read(FIRMWARE), "void handleApiScheduleSave()")
-    body = handler[handler.index('body.indexOf("\\"targets\\":[")') :]
     assert "PwmChannel parsed" in handler, (
         "handleApiScheduleSave must parse into a scratch PwmChannel and commit "
         "only on success. Clearing the live channel first means any parse "
@@ -285,7 +288,9 @@ def test_save_sorts_and_dedupes_by_time(clean_channel):
     )
     assert status == 200, body
 
-    times = [t["time"] for t in _get(clean_channel, "/api/schedule/get?channel=0")["targets"]]
+    times = [
+        t["time"] for t in _get(clean_channel, "/api/schedule/get?channel=0")["targets"]
+    ]
     assert times == sorted(times), f"targets not ascending: {times}"
     assert len(times) == len(set(times)), f"duplicate times stored: {times}"
     assert 0 in times and 25200 in times and 85800 in times and 86340 in times
@@ -296,7 +301,10 @@ def test_duplicate_time_keeps_last_value(clean_channel):
     _post(
         clean_channel,
         "/api/schedule/save",
-        {"channel": 0, "targets": [{"time": 3600, "value": 10}, {"time": 3600, "value": 90}]},
+        {
+            "channel": 0,
+            "targets": [{"time": 3600, "value": 10}, {"time": 3600, "value": 90}],
+        },
     )
     targets = _get(clean_channel, "/api/schedule/get?channel=0")["targets"]
     assert len(targets) == 1, f"expected the duplicate to collapse, got {targets}"
@@ -365,16 +373,24 @@ def test_over_long_list_is_rejected_not_truncated(clean_channel):
     32 that happened to be kept - the user lost everything after ~05:10.
     """
     targets = [{"time": i * 600, "value": 50} for i in range(MAX_TARGETS + 5)]
-    status, body = _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": targets})
-    assert status == 400, f"expected 400 for {len(targets)} targets, got {status}: {body}"
+    status, body = _post(
+        clean_channel, "/api/schedule/save", {"channel": 0, "targets": targets}
+    )
+    assert status == 400, (
+        f"expected 400 for {len(targets)} targets, got {status}: {body}"
+    )
     assert "error" in body, f"rejection must carry an error message, got {body}"
 
 
 def test_exactly_at_the_cap_is_accepted(clean_channel):
     """The boundary case must still succeed - the cap is inclusive."""
     targets = [{"time": i * 600, "value": 50} for i in range(MAX_TARGETS)]
-    status, body = _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": targets})
-    assert status == 200, f"{MAX_TARGETS} targets must be accepted, got {status}: {body}"
+    status, body = _post(
+        clean_channel, "/api/schedule/save", {"channel": 0, "targets": targets}
+    )
+    assert status == 200, (
+        f"{MAX_TARGETS} targets must be accepted, got {status}: {body}"
+    )
     assert body["target_count"] == MAX_TARGETS
 
 
@@ -385,14 +401,19 @@ def test_rejected_save_leaves_schedule_intact(clean_channel):
     rejection left TargetCount == 0 and proceedCycle() forced the output to 0%.
     """
     good = [{"time": 28800, "value": 50}, {"time": 43200, "value": 100}]
-    status, _ = _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": good})
+    status, _ = _post(
+        clean_channel, "/api/schedule/save", {"channel": 0, "targets": good}
+    )
     assert status == 200
 
     # An over-long list is rejected...
     status, _ = _post(
         clean_channel,
         "/api/schedule/save",
-        {"channel": 0, "targets": [{"time": i * 600, "value": 10} for i in range(MAX_TARGETS + 5)]},
+        {
+            "channel": 0,
+            "targets": [{"time": i * 600, "value": 10} for i in range(MAX_TARGETS + 5)],
+        },
     )
     assert status == 400
 
@@ -419,9 +440,17 @@ def test_unparseable_targets_leave_schedule_intact(clean_channel):
 
 def test_empty_target_list_clears_the_channel(clean_channel):
     """An explicitly empty list is a legitimate clear, not a parse failure."""
-    _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": [{"time": 3600, "value": 50}]})
-    status, body = _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": []})
-    assert status == 200, f"an empty list must be accepted as a clear, got {status}: {body}"
+    _post(
+        clean_channel,
+        "/api/schedule/save",
+        {"channel": 0, "targets": [{"time": 3600, "value": 50}]},
+    )
+    status, body = _post(
+        clean_channel, "/api/schedule/save", {"channel": 0, "targets": []}
+    )
+    assert status == 200, (
+        f"an empty list must be accepted as a clear, got {status}: {body}"
+    )
     assert body["target_count"] == 0
     assert _get(clean_channel, "/api/schedule/get?channel=0")["targets"] == []
 
@@ -431,17 +460,31 @@ def test_values_are_clamped_to_the_documented_range(clean_channel):
     _post(
         clean_channel,
         "/api/schedule/save",
-        {"channel": 0, "targets": [{"time": 3600, "value": 250}, {"time": 7200, "value": -5}]},
+        {
+            "channel": 0,
+            "targets": [{"time": 3600, "value": 250}, {"time": 7200, "value": -5}],
+        },
     )
-    values = {t["time"]: t["value"] for t in _get(clean_channel, "/api/schedule/get?channel=0")["targets"]}
+    values = {
+        t["time"]: t["value"]
+        for t in _get(clean_channel, "/api/schedule/get?channel=0")["targets"]
+    }
     assert values[3600] == 100, f"250 must clamp to 100, got {values[3600]}"
     assert values[7200] == 0, f"-5 must clamp to 0, got {values[7200]}"
 
 
 def test_target_add_replaces_existing_time(clean_channel):
     """POST target/add must update, not duplicate (issue #29)."""
-    _post(clean_channel, "/api/schedule/target/add", {"channel": 0, "time": 3600, "value": 20})
-    _post(clean_channel, "/api/schedule/target/add", {"channel": 0, "time": 3600, "value": 70})
+    _post(
+        clean_channel,
+        "/api/schedule/target/add",
+        {"channel": 0, "time": 3600, "value": 20},
+    )
+    _post(
+        clean_channel,
+        "/api/schedule/target/add",
+        {"channel": 0, "time": 3600, "value": 70},
+    )
     targets = _get(clean_channel, "/api/schedule/get?channel=0")["targets"]
     assert len(targets) == 1, f"target/add duplicated the time: {targets}"
     assert targets[0]["value"] == 70
@@ -451,11 +494,17 @@ def test_target_add_on_a_full_channel_is_rejected(clean_channel):
     """A 33rd distinct timepoint must be refused, not dropped silently (#40)."""
     for i in range(MAX_TARGETS):
         status, _ = _post(
-            clean_channel, "/api/schedule/target/add", {"channel": 0, "time": i * 60, "value": 10}
+            clean_channel,
+            "/api/schedule/target/add",
+            {"channel": 0, "time": i * 60, "value": 10},
         )
         assert status == 200, f"target {i} should have been accepted"
 
-    status, body = _post(clean_channel, "/api/schedule/target/add", {"channel": 0, "time": 86399, "value": 10})
+    status, body = _post(
+        clean_channel,
+        "/api/schedule/target/add",
+        {"channel": 0, "time": 86399, "value": 10},
+    )
     assert status == 400, f"expected 400 on a full channel, got {status}: {body}"
     stored = _get(clean_channel, "/api/schedule/get?channel=0")["targets"]
     assert len(stored) == MAX_TARGETS, f"stored count changed: {len(stored)}"
