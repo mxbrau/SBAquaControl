@@ -16,6 +16,7 @@
 /.venv/
 *.backup
 secrets.ini
+.tokens
 
 
 
