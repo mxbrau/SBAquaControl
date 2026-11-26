@@ -125,6 +125,63 @@ def write_channel_cfg(channel: int, targets):
         print(f"⚠ Could not write SD config for channel {channel}: {e}")
 
 
+def _parse_int_strict(value):
+    """Parse a JSON integer without Python's int()/bool/float coercions.
+
+    Returns None for anything the firmware's parseStrictLong() would reject.
+    """
+    if isinstance(value, (bool, float)):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        digits = text[1:] if text[0] in "+-" else text
+        if not digits or not all(c in "0123456789" for c in digits):
+            return None
+        return int(text, 10)
+    return None
+
+
+def _parse_time_strict(value):
+    """Parse seconds / HH:MM / MM:SS like the firmware's parseStrictTargetTime()."""
+    if isinstance(value, str) and ":" in value:
+        first_text, second_text = value.split(":", 1)
+        first = _parse_int_strict(first_text.strip())
+        second = _parse_int_strict(second_text.strip())
+        if first is None or second is None or first < 0 or second < 0 or second >= 60:
+            return None
+        # Same HH:MM vs MM:SS heuristic as parseTimeToSeconds().
+        return first * 60 + second if first >= 24 else first * 3600 + second * 60
+    return _parse_int_strict(value)
+
+
+def parse_schedule_target(target):
+    """Strictly parse one {time,value} object, or return None if unusable.
+
+    Mirrors the firmware's schedule-save parser (issues #29/#40): both keys must
+    be present and parse, the time may be numeric or HH:MM, and out-of-range
+    values are clamped rather than rejected. A missing key, a non-object entry
+    or garbage such as "later" is a bad request - not a target at second 0.
+    """
+    if not isinstance(target, dict):
+        return None
+    if "time" not in target or "value" not in target:
+        return None
+
+    seconds = _parse_time_strict(target["time"])
+    value = _parse_int_strict(target["value"])
+    if seconds is None or value is None:
+        return None
+
+    return {
+        "time": max(0, min(86400, seconds)),
+        "value": max(0, min(100, value)),
+    }
+
+
 def normalize_targets(targets, keep_is_control=True):
     """Clamp/dedupe/sort targets exactly like the firmware does (issues #29, #40).
 
@@ -373,7 +430,8 @@ def macro_duration_from_targets(channels) -> int:
 
 def json_body() -> dict:
     """Firmware tolerates an empty/missing body; never 500 on a bad request."""
-    return request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else {}
 
 
 # Serve static files
@@ -426,37 +484,37 @@ def get_all_schedules():
 def save_schedule():
     """Save schedule for a specific channel"""
     data = json_body()
-    channel = data.get("channel")
-    targets = data.get("targets", [])
+    channel = _parse_int_strict(data.get("channel"))
 
     if channel is None or channel < 0 or channel >= CHANNELS:
         return jsonify({"error": "Invalid channel"}), 400
 
-    # Issue #40: parse into a scratch list and commit only once it is known good,
-    # mirroring the firmware's build-then-swap. A rejected save must leave the
-    # stored schedule untouched rather than clearing it.
-    objects_seen = len(targets) if isinstance(targets, list) else 0
-    cleaned, overflow = dedupe_and_sort(normalize_targets(targets))
+    # Issue #40 hardening: a missing key or a non-array value is NOT an explicit
+    # empty schedule. Only `"targets": []` clears a channel.
+    if "targets" not in data:
+        return jsonify({"error": "Missing targets array - schedule unchanged"}), 400
+    targets = data["targets"]
+    if not isinstance(targets, list):
+        return jsonify({"error": "targets must be an array - schedule unchanged"}), 400
 
-    # Objects present but none usable -> bad request, existing schedule kept.
-    #
-    # "Usable" means the object carried BOTH a time and a value. The firmware
-    # requires both before it calls addTarget(), so a payload of {"nope":1}-style
-    # objects is a parse failure to reject - not an implicit "clear this
-    # channel", which is what the old counting-only-objects rule would have
-    # turned it into.
-    usable_seen = (
-        sum(1 for t in targets if isinstance(t, dict) and "time" in t and "value" in t)
-        if isinstance(targets, list)
-        else 0
-    )
-    if objects_seen > 0 and usable_seen == 0:
-        print(
-            f"✗ Save rejected for channel {channel}: {objects_seen} object(s), none usable"
-        )
-        return jsonify(
-            {"error": "Could not parse any target - schedule unchanged"}
-        ), 400
+    # Issue #40: parse into a scratch list and commit only once EVERY object is
+    # known good, mirroring the firmware. Rejecting the whole save (rather than
+    # committing the parseable subset) is what stops a damaged body from silently
+    # replacing a working schedule with a partial day.
+    usable = []
+    for index, target in enumerate(targets):
+        parsed_target = parse_schedule_target(target)
+        if parsed_target is None:
+            print(
+                f"✗ Save rejected for channel {channel}: target {index} is not usable"
+            )
+            return jsonify(
+                {"error": "Could not parse every target - schedule unchanged"}
+            ), 400
+        parsed_target["isControl"] = bool(target.get("isControl", True))
+        usable.append(parsed_target)
+
+    cleaned, overflow = dedupe_and_sort(usable)
 
     # Issue #40: refuse to silently truncate the day.
     if overflow > 0:

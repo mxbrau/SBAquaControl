@@ -191,6 +191,51 @@ def test_schedule_save_reports_persist_failure():
     )
 
 
+def test_schedule_save_rejects_missing_or_malformed_targets():
+    """A body without a usable targets array must 400, not clear (issue #40).
+
+    An explicit `"targets": []` is a legitimate clear. A missing key, a
+    non-array value, an unterminated array, or an array containing non-objects is
+    NOT that: treating any of them as a clear is how a failed save used to blank
+    a working channel while answering 200. The same applies to a body that
+    contains objects but not all of them parse - committing the valid subset
+    would silently replace a day with a partial one.
+    """
+    handler = _body(_read(FIRMWARE), "void handleApiScheduleSave()")
+
+    assert 'body.indexOf("\\"targets\\"")' in handler, (
+        'handleApiScheduleSave must locate the "targets" key explicitly so a '
+        "body without it is rejected instead of being treated as an empty list "
+        "(issue #40)"
+    )
+    assert "Missing targets array" in handler
+    assert "targets must be an array" in handler
+    assert "Unterminated targets array" in handler
+    assert "Malformed target object" in handler
+    assert "Malformed targets array" in handler
+    assert "objectsUsed != objectsSeen" in handler, (
+        "handleApiScheduleSave must reject a save in which any object failed to "
+        "parse, rather than committing the parseable subset (issue #40)"
+    )
+    assert "parseStrictTargetTime" in handler and "parseStrictLong" in handler, (
+        "handleApiScheduleSave must parse time/value strictly; String::toInt() "
+        'coerces garbage to 0 and turns {"time":"later"} into a real '
+        "midnight target (issues #29/#40)"
+    )
+    assert "parseTimeToSeconds(timeStr)" not in handler, (
+        "the save handler still uses the lenient parseTimeToSeconds(timeStr) "
+        "path, which coerces unparseable times to 0 (issues #29/#40)"
+    )
+    assert (
+        'body.length() == 0 && _Server.hasArg("channel") && _Server.hasArg("targets")'
+        in handler
+    ), (
+        "the empty-body query fallback must require ?targets= as well as "
+        "?channel=; defaulting to an empty targets list made an empty POST clear "
+        "the channel (issue #40)"
+    )
+
+
 def test_webui_target_cap_matches_firmware():
     """The UI's MAX_TARGETS must equal the firmware cap (issue #40).
 
@@ -234,11 +279,12 @@ def test_firmware_writes_end_of_day_as_24_00():
 # the mock must satisfy.
 
 
-def _post(base, path, payload):
+def _post_raw(base, path, raw, content_type="application/json"):
+    """POST a pre-encoded body, for testing malformed/truncated JSON."""
     req = urllib.request.Request(
         base + path,
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        data=raw.encode(),
+        headers={"Content-Type": content_type},
         method="POST",
     )
     try:
@@ -250,6 +296,10 @@ def _post(base, path, payload):
             return exc.code, json.loads(body)
         except json.JSONDecodeError:
             return exc.code, {"raw": body}
+
+
+def _post(base, path, payload):
+    return _post_raw(base, path, json.dumps(payload))
 
 
 def _get(base, path):
@@ -453,6 +503,73 @@ def test_empty_target_list_clears_the_channel(clean_channel):
     )
     assert body["target_count"] == 0
     assert _get(clean_channel, "/api/schedule/get?channel=0")["targets"] == []
+
+
+def _assert_rejected_without_damage(base, status, body, label, expected):
+    """A rejected save must 400 AND leave the stored schedule unchanged."""
+    assert status == 400, f"{label}: expected 400, got {status}: {body}"
+    after = _get(base, "/api/schedule/get?channel=0")["targets"]
+    assert [(t["time"], t["value"]) for t in after] == [
+        (t["time"], t["value"]) for t in expected
+    ], f"{label} damaged the stored schedule: {after}"
+
+
+@pytest.mark.parametrize(
+    "payload,label",
+    [
+        ({"channel": 0}, "missing targets key"),
+        ({"channel": 0, "targets": None}, "targets: null"),
+        ({"channel": 0, "targets": "x"}, "targets as a string"),
+        ({"channel": 0, "targets": ["x"]}, "non-object element"),
+        ({"channel": 0, "targets": [[]]}, "nested array element"),
+    ],
+)
+def test_bad_targets_container_is_rejected_not_cleared(clean_channel, payload, label):
+    """Only an explicit "targets":[] clears; malformed containers must 400 (#40).
+
+    These used to be indistinguishable from an empty list: the handler cleared
+    the live channel first and re-added whatever parsed, so a missing key or a
+    non-array value produced TargetCount == 0 - the explicit lights-off state -
+    with a 200 success response.
+    """
+    good = [{"time": 28800, "value": 50}, {"time": 43200, "value": 100}]
+    _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": good})
+    status, body = _post(clean_channel, "/api/schedule/save", payload)
+    _assert_rejected_without_damage(clean_channel, status, body, label, good)
+
+
+@pytest.mark.parametrize(
+    "bad_target",
+    [
+        {"time": "later", "value": 50},
+        {"time": 3600, "value": "bright"},
+        {"time": 3600},
+        {"value": 50},
+        {"nope": 1},
+        {},
+    ],
+)
+def test_one_unusable_target_rejects_the_whole_save(clean_channel, bad_target):
+    """Committing the parseable subset would silently shorten the day (#40)."""
+    good = [{"time": 28800, "value": 50}, {"time": 43200, "value": 100}]
+    _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": good})
+    status, body = _post(
+        clean_channel,
+        "/api/schedule/save",
+        {"channel": 0, "targets": [{"time": 7200, "value": 25}, bad_target]},
+    )
+    _assert_rejected_without_damage(
+        clean_channel, status, body, "unusable target", good
+    )
+
+
+def test_truncated_body_is_rejected_not_cleared(clean_channel):
+    """A body that stops mid-target must not blank the channel (#40)."""
+    good = [{"time": 28800, "value": 50}, {"time": 43200, "value": 100}]
+    _post(clean_channel, "/api/schedule/save", {"channel": 0, "targets": good})
+    raw = '{"channel":0,"targets":[{"time":28800,"value":50},{"time":43200'
+    status, body = _post_raw(clean_channel, "/api/schedule/save", raw)
+    _assert_rejected_without_damage(clean_channel, status, body, "truncated body", good)
 
 
 def test_values_are_clamped_to_the_documented_range(clean_channel):

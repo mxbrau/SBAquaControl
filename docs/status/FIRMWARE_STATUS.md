@@ -112,10 +112,11 @@ Covered by automation (`uv run pytest test/` — mock contract, route parity, ho
 - [x] Mock mirrors all firmware routes
 - [x] All API endpoints match the firmware contract
 - [x] Scheduling maths pass on the host (interpolation, slew limiter, time parsing)
+- [x] Schedule save rejects missing/malformed target lists and leaves the stored schedule intact (mock contract + firmware source guards)
 
 Needs real hardware (see [TESTING_GUIDE.md](TESTING_GUIDE.md)):
 - [ ] Test mode operations (manual channel control, LED output)
-- [ ] Save/load configurations via web UI
+- [ ] Save/load configurations via web UI — **#29/#40 fix awaiting hardware pass**: save a day/night schedule, confirm `/api/schedule/get` is strictly ascending and unique, `ledch_XX.cfg` contains `24:00`, and the schedule survives a power cycle
 - [ ] Temperature sensor integration (if enabled)
 - [ ] OTA update process
 - [ ] 24-hour operation without memory leaks

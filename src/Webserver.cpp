@@ -186,6 +186,85 @@ long parseTimeToSeconds(String timeStr)
 	}
 }
 
+// Strict decimal parse for the schedule-save body. String::toInt() returns 0
+// for garbage, so {"time":"later","value":50} used to become a legitimate
+// target at second 0 and be saved with a 200 (issues #29/#40). Returns false if
+// any character is not part of the number.
+static bool parseStrictLong(const String &value, long &result)
+{
+	String trimmed = value;
+	trimmed.trim();
+	if (trimmed.length() == 0)
+	{
+		return false;
+	}
+
+	unsigned int i = 0;
+	bool negative = false;
+	if (trimmed.charAt(0) == '+' || trimmed.charAt(0) == '-')
+	{
+		negative = (trimmed.charAt(0) == '-');
+		i = 1;
+	}
+	if (i >= trimmed.length())
+	{
+		return false;
+	}
+
+	long parsed = 0;
+	for (; i < trimmed.length(); i++)
+	{
+		char c = trimmed.charAt(i);
+		if (c < '0' || c > '9')
+		{
+			return false;
+		}
+		// Times and values are small; reject absurd input instead of overflowing.
+		if (parsed > 1000000L)
+		{
+			return false;
+		}
+		parsed = (parsed * 10) + (c - '0');
+	}
+	result = negative ? -parsed : parsed;
+	return true;
+}
+
+// Strict variant of parseTimeToSeconds() for the schedule-save handler. Accepts
+// the same shapes (decimal seconds, HH:MM, MM:SS) but rejects unparseable input
+// instead of coercing it to 0. Keeps parseTimeToSeconds()'s HH:MM/MM:SS
+// heuristic so valid payloads keep their existing wire meaning.
+static bool parseStrictTargetTime(const String &value, long &result)
+{
+	String trimmed = value;
+	trimmed.trim();
+	if (trimmed.length() == 0)
+	{
+		return false;
+	}
+
+	int colon = trimmed.indexOf(':');
+	if (colon == -1)
+	{
+		return parseStrictLong(trimmed, result);
+	}
+
+	long first = 0;
+	long second = 0;
+	if (!parseStrictLong(trimmed.substring(0, colon), first) ||
+		!parseStrictLong(trimmed.substring(colon + 1), second))
+	{
+		return false;
+	}
+	if (first < 0 || first > 100000L || second < 0 || second >= 60)
+	{
+		return false;
+	}
+
+	result = (first >= 24) ? (first * 60 + second) : (first * 3600 + second * 60);
+	return true;
+}
+
 // API: GET /api/status
 void handleApiStatus()
 {
@@ -349,17 +428,20 @@ void handleApiScheduleSave()
 	Serial.print(F("Schedule save body: "));
 	Serial.println(body);
 
-	// If body is empty, try minimal fallback parameters
-	if (body.length() == 0 && _Server.hasArg("channel"))
+	// If body is empty, try minimal fallback parameters. Both are required:
+	// an empty POST with only ?channel=N used to synthesise "targets":[] and
+	// therefore CLEAR the channel. A save without a target list is ambiguous, not
+	// an explicit clear (issue #40).
+	if (body.length() == 0 && _Server.hasArg("channel") && _Server.hasArg("targets"))
 	{
 		// Build a tiny synthetic JSON for the minimal parser path
 		String ch = _Server.arg("channel");
-		String targets = _Server.arg("targets"); // optional, expected like [{"time":3600,"value":50},...]
-		body.reserve(128);						 // Pre-allocate to avoid fragmentation
+		String targets = _Server.arg("targets");
+		body.reserve(128); // Pre-allocate to avoid fragmentation
 		body = "{\"channel\":";
 		body += ch;
 		body += ",\"targets\":";
-		body += (targets.length() ? targets : "[]");
+		body += targets;
 		body += "}";
 	}
 
@@ -394,90 +476,148 @@ void handleApiScheduleSave()
 	// failed parse silently blacked out a channel that had a working schedule -
 	// while still answering 200 {"status":"ok"}. Build then swap.
 	PwmChannel parsed;
-	unsigned int objectsSeen = 0; // '{' we walked over, to tell "empty" from "unparseable"
-	unsigned int overflowed = 0;  // targets refused because the channel is full
 
-	// Parse targets array
-	int targetsIdx = body.indexOf("\"targets\":[");
-	if (targetsIdx != -1)
+	// Locate the targets array. A missing key, a non-array value and an
+	// unterminated array are all rejected: none of them is the same as an
+	// explicit "targets":[] clear. Treating "I could not read the body" as "the
+	// user asked for an empty schedule" is exactly how a shortfall used to black
+	// out a working channel while answering 200 (issue #40).
+	int targetsKeyIdx = body.indexOf("\"targets\"");
+	if (targetsKeyIdx == -1)
 	{
-		int arrayStart = targetsIdx + 11;
-		int arrayEnd = body.indexOf(']', arrayStart);
-		String targetsStr = body.substring(arrayStart, arrayEnd);
-
-		// Simple parser: split by },{
-		unsigned int pos = 0;
-		while (pos < targetsStr.length())
-		{
-			int objStart = targetsStr.indexOf('{', pos);
-			if (objStart == -1)
-				break;
-			int objEnd = targetsStr.indexOf('}', objStart);
-			if (objEnd == -1)
-				break;
-			objectsSeen++;
-
-			String obj = targetsStr.substring(objStart + 1, objEnd);
-
-			// Parse time
-			int timeIdx = obj.indexOf("\"time\":");
-			if (timeIdx != -1)
-			{
-				int timeStart = timeIdx + 7;
-				int timeEnd = obj.indexOf(',', timeStart);
-				if (timeEnd == -1)
-					timeEnd = obj.length();
-				String timeStr = obj.substring(timeStart, timeEnd);
-				timeStr.trim();
-				if (timeStr.startsWith("\""))
-					timeStr = timeStr.substring(1, timeStr.length() - 1);
-				long targetTime = parseTimeToSeconds(timeStr);
-				// 86400 stays reachable on purpose: the web UI's end-of-day
-				// sentinel is a legitimate Time (issue #40), and addTarget()
-				// orders by the raw Time so it sorts last and behaves as
-				// "hold this value until midnight".
-				targetTime = max(0L, min(86400L, targetTime));
-
-				// Parse value
-				int valueIdx = obj.indexOf("\"value\":");
-				if (valueIdx != -1)
-				{
-					int valueStart = valueIdx + 8;
-					int valueEnd = obj.indexOf(',', valueStart);
-					if (valueEnd == -1)
-						valueEnd = obj.length();
-					String valueStr = obj.substring(valueStart, valueEnd);
-					valueStr.trim();
-					int value = valueStr.toInt();
-					value = max(0, min(100, value));
-					uint8_t finalValue = (uint8_t)value;
-
-					Target t;
-					t.Time = targetTime;
-					t.Value = finalValue;
-					// Issue #40: a full channel used to drop the surplus
-					// silently, truncating the day to whatever happened to be
-					// earliest. Count it so the caller can be told instead.
-					if (parsed.addTarget(t) == PwmChannel::ADD_TARGET_FULL)
-					{
-						overflowed++;
-					}
-				}
-			}
-
-			pos = objEnd + 1;
-		}
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Missing targets array - schedule unchanged\"}");
+		return;
 	}
 
-	// Objects were present but none of them parsed. Treat that as a bad request
-	// and leave the existing schedule untouched. (A genuinely empty "targets":[]
-	// is a legitimate "clear this channel" and still falls through to commit.)
-	if (objectsSeen > 0 && parsed.TargetCount == 0)
+	int targetsColon = body.indexOf(':', targetsKeyIdx + 9);
+	int arrayStart = (targetsColon == -1) ? -1 : targetsColon + 1;
+	while (arrayStart >= 0 && arrayStart < (int)body.length())
 	{
-		Serial.printf("Schedule save for channel %u rejected: %u object(s) parsed, none usable\n",
-					  (unsigned)channel, (unsigned)objectsSeen);
+		char c = body.charAt(arrayStart);
+		if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+			break;
+		arrayStart++;
+	}
+	if (arrayStart < 0 || arrayStart >= (int)body.length() || body.charAt(arrayStart) != '[')
+	{
 		_Server.send(400, "application/json",
-					 "{\"error\":\"Could not parse any target - schedule unchanged\"}");
+					 "{\"error\":\"targets must be an array - schedule unchanged\"}");
+		return;
+	}
+	arrayStart++;
+
+	int arrayEnd = body.indexOf(']', arrayStart);
+	if (arrayEnd == -1)
+	{
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Unterminated targets array - schedule unchanged\"}");
+		return;
+	}
+	String targetsStr = body.substring(arrayStart, arrayEnd);
+
+	unsigned int objectsSeen = 0; // '{' objects found inside the array
+	unsigned int objectsUsed = 0; // objects that yielded a stored target
+	unsigned int overflowed = 0;  // targets refused because the channel is full
+
+	// Simple parser: one {...} object per target.
+	unsigned int pos = 0;
+	while (pos < (unsigned int)targetsStr.length())
+	{
+		int objStart = targetsStr.indexOf('{', pos);
+		if (objStart == -1)
+			break;
+		int objEnd = targetsStr.indexOf('}', objStart);
+		if (objEnd == -1)
+		{
+			// An opening brace with no closing one means the body stopped
+			// mid-target. Reject rather than committing a partial schedule.
+			_Server.send(400, "application/json",
+						 "{\"error\":\"Malformed target object - schedule unchanged\"}");
+			return;
+		}
+		objectsSeen++;
+
+		String obj = targetsStr.substring(objStart + 1, objEnd);
+
+		int timeIdx = obj.indexOf("\"time\":");
+		int valueIdx = obj.indexOf("\"value\":");
+		long targetTime = 0;
+		long value = 0;
+		bool usable = (timeIdx != -1) && (valueIdx != -1);
+
+		// Parse time. Both a JSON number and an "HH:MM"/"MM:SS" string are
+		// accepted, but neither String::toInt()'s "garbage becomes 0" fallback
+		// nor a missing key may turn an unreadable target into a real one.
+		if (usable)
+		{
+			int timeStart = timeIdx + 7;
+			int timeEnd = obj.indexOf(',', timeStart);
+			if (timeEnd == -1)
+				timeEnd = obj.length();
+			String timeStr = obj.substring(timeStart, timeEnd);
+			timeStr.trim();
+			if (timeStr.startsWith("\""))
+				timeStr = timeStr.substring(1, timeStr.length() - 1);
+			usable = parseStrictTargetTime(timeStr, targetTime);
+		}
+
+		// Parse value
+		if (usable)
+		{
+			int valueStart = valueIdx + 8;
+			int valueEnd = obj.indexOf(',', valueStart);
+			if (valueEnd == -1)
+				valueEnd = obj.length();
+			String valueStr = obj.substring(valueStart, valueEnd);
+			valueStr.trim();
+			if (valueStr.startsWith("\""))
+				valueStr = valueStr.substring(1, valueStr.length() - 1);
+			usable = parseStrictLong(valueStr, value);
+		}
+
+		if (usable)
+		{
+			// 86400 stays reachable on purpose: the web UI's end-of-day sentinel
+			// is a legitimate Time (issue #40), and addTarget() orders by the raw
+			// Time so it sorts last and behaves as "hold until midnight".
+			targetTime = max(0L, min(86400L, targetTime));
+			value = max(0L, min(100L, value));
+
+			Target t;
+			t.Time = targetTime;
+			t.Value = (uint8_t)value;
+			// Issue #40: a full channel used to drop the surplus silently,
+			// truncating the day to whatever happened to be earliest.
+			if (parsed.addTarget(t) == PwmChannel::ADD_TARGET_FULL)
+			{
+				overflowed++;
+			}
+			else
+			{
+				objectsUsed++;
+			}
+		}
+
+		pos = objEnd + 1;
+	}
+
+	// A non-empty array that contained no {...} objects at all is malformed
+	// (["x"], [[]], ...). Only whitespace/commas count as an explicit empty list.
+	bool arrayHasContent = false;
+	for (unsigned int i = 0; i < (unsigned int)targetsStr.length(); i++)
+	{
+		char c = targetsStr.charAt(i);
+		if (c != ' ' && c != '\t' && c != '\r' && c != '\n' && c != ',')
+		{
+			arrayHasContent = true;
+			break;
+		}
+	}
+	if (objectsSeen == 0 && arrayHasContent)
+	{
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Malformed targets array - schedule unchanged\"}");
 		return;
 	}
 
@@ -492,6 +632,17 @@ void handleApiScheduleSave()
 		sprintf(err, "{\"error\":\"Too many targets - max %u per channel\",\"max_targets\":%u}",
 				(unsigned)MAX_TARGET_COUNT_PER_CHANNEL, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
 		_Server.send(400, "application/json", err);
+		return;
+	}
+
+	// At least one object present but at least one of them unusable. Reject the
+	// whole save: committing the parseable subset would silently drop the rest.
+	if (objectsSeen > 0 && objectsUsed != objectsSeen)
+	{
+		Serial.printf("Schedule save for channel %u rejected: %u object(s), %u usable\n",
+					  (unsigned)channel, (unsigned)objectsSeen, (unsigned)objectsUsed);
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Could not parse every target - schedule unchanged\"}");
 		return;
 	}
 
