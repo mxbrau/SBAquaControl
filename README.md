@@ -2,21 +2,22 @@
 
 [Full report](https://htmlpreview.github.io/?https://github.com/mxbrau/SBAquaControl/blob/python-coverage-comment-action-data/htmlcov/index.html)
 
-| Name                           |    Stmts |     Miss |   Cover |   Missing |
-|------------------------------- | -------: | -------: | ------: | --------: |
-| scripts/\_\_init\_\_.py        |        0 |        0 |    100% |           |
-| scripts/load\_secrets.py       |       16 |       16 |      0% |      1-24 |
-| scripts/sync\_sd\_card.py      |       67 |       67 |      0% |     8-108 |
-| test/conftest.py               |       56 |        7 |     88% |35-37, 55, 77, 85-86 |
-| test/gen\_schedule\_fixture.py |       49 |       49 |      0% |    21-181 |
-| test/mock\_server.py           |      471 |      471 |      0% |    29-955 |
-| test/test\_api\_parity.py      |      171 |       77 |     55% |84-99, 142-143, 348-349, 358-416, 420-444, 448 |
-| test/test\_firmware\_build.py  |       27 |        2 |     93% |    32, 34 |
-| test/test\_host\_unit.py       |       14 |        1 |     93% |        21 |
-| test/test\_live\_contract.py   |       23 |        2 |     91% |     28-29 |
-| test/test\_parity.py           |       12 |        0 |    100% |           |
-| test/test\_regressions.py      |       31 |        0 |    100% |           |
-| **TOTAL**                      |  **937** |  **692** | **26%** |           |
+| Name                              |    Stmts |     Miss |   Cover |   Missing |
+|---------------------------------- | -------: | -------: | ------: | --------: |
+| scripts/\_\_init\_\_.py           |        0 |        0 |    100% |           |
+| scripts/load\_secrets.py          |       16 |       16 |      0% |      1-24 |
+| scripts/sync\_sd\_card.py         |       67 |       67 |      0% |     8-108 |
+| test/conftest.py                  |       56 |        7 |     88% |35-37, 55, 77, 85-86 |
+| test/gen\_schedule\_fixture.py    |       49 |       49 |      0% |    21-181 |
+| test/mock\_server.py              |      533 |      533 |      0% |   29-1131 |
+| test/test\_api\_parity.py         |      171 |       77 |     55% |84-99, 142-143, 348-349, 358-416, 420-444, 448 |
+| test/test\_firmware\_build.py     |       27 |        2 |     93% |    32, 34 |
+| test/test\_host\_unit.py          |       14 |        1 |     93% |        21 |
+| test/test\_live\_contract.py      |       23 |        2 |     91% |     28-29 |
+| test/test\_parity.py              |       12 |        0 |    100% |           |
+| test/test\_regressions.py         |       31 |        0 |    100% |           |
+| test/test\_schedule\_integrity.py |      190 |        2 |     99% |   297-298 |
+| **TOTAL**                         | **1189** |  **756** | **36%** |           |
 
 
 ## Setup coverage badge
