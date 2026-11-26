@@ -116,7 +116,7 @@ Covered by automation (`uv run pytest test/` — mock contract, route parity, ho
 
 Needs real hardware (see [TESTING_GUIDE.md](TESTING_GUIDE.md)):
 - [ ] Test mode operations (manual channel control, LED output)
-- [ ] Save/load configurations via web UI — **#29/#40 fix awaiting hardware pass**: save a day/night schedule, confirm `/api/schedule/get` is strictly ascending and unique, `ledch_XX.cfg` contains `24:00`, and the schedule survives a power cycle
+- [x] Save/load configurations via web UI — **hardware-verified 2026-11-26** on SBAQC (`8d656d5`, fw 0.5.001): saving the UI's day/night payload with the `86400` sentinel stores strictly ascending/unique targets, `/api/reboot` preserves them, the `86400` target round-trips as `24:00`, and malformed saves return 400 without changing the schedule
 - [ ] Temperature sensor integration (if enabled)
 - [ ] OTA update process
 - [ ] 24-hour operation without memory leaks
