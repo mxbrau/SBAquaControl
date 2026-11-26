@@ -111,8 +111,12 @@ def write_channel_cfg(channel: int, targets):
             for t in sorted_targets:
                 seconds = int(t.get("time", 0))
                 seconds = max(0, min(86400, seconds))
-                hour = seconds // 3600
-                minute = (seconds % 3600) // 60
+                # Issue #40: an end-of-day target (time 86400) must be written as
+                # 24:00, which is what readLedConfig parses back into 86400 and
+                # what the firmware now emits. Writing it as 00:00 turned
+                # "hold until midnight" into "start the day here" on the next
+                # boot and collided with a genuine midnight target.
+                hour, minute = divmod(seconds // 60, 60)
                 value = int(t.get("value", 0))
                 value = max(0, min(100, value))
                 f.write(f"{hour:02d}:{minute:02d};{value}\r\n")
@@ -121,8 +125,76 @@ def write_channel_cfg(channel: int, targets):
         print(f"⚠ Could not write SD config for channel {channel}: {e}")
 
 
+def _parse_int_strict(value):
+    """Parse a JSON integer without Python's int()/bool/float coercions.
+
+    Returns None for anything the firmware's parseStrictLong() would reject.
+    """
+    if isinstance(value, (bool, float)):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        digits = text[1:] if text[0] in "+-" else text
+        if not digits or not all(c in "0123456789" for c in digits):
+            return None
+        return int(text, 10)
+    return None
+
+
+def _parse_time_strict(value):
+    """Parse seconds / HH:MM / MM:SS like the firmware's parseStrictTargetTime()."""
+    if isinstance(value, str) and ":" in value:
+        first_text, second_text = value.split(":", 1)
+        first = _parse_int_strict(first_text.strip())
+        second = _parse_int_strict(second_text.strip())
+        if first is None or second is None or first < 0 or second < 0 or second >= 60:
+            return None
+        # Same HH:MM vs MM:SS heuristic as parseTimeToSeconds().
+        return first * 60 + second if first >= 24 else first * 3600 + second * 60
+    return _parse_int_strict(value)
+
+
+def parse_schedule_target(target):
+    """Strictly parse one {time,value} object, or return None if unusable.
+
+    Mirrors the firmware's schedule-save parser (issues #29/#40): both keys must
+    be present and parse, the time may be numeric or HH:MM, and out-of-range
+    values are clamped rather than rejected. A missing key, a non-object entry
+    or garbage such as "later" is a bad request - not a target at second 0.
+    """
+    if not isinstance(target, dict):
+        return None
+    if "time" not in target or "value" not in target:
+        return None
+
+    seconds = _parse_time_strict(target["time"])
+    value = _parse_int_strict(target["value"])
+    if seconds is None or value is None:
+        return None
+
+    return {
+        "time": max(0, min(86400, seconds)),
+        "value": max(0, min(100, value)),
+    }
+
+
 def normalize_targets(targets, keep_is_control=True):
-    """Clamp/sort/coerce targets exactly like the firmware does."""
+    """Clamp/dedupe/sort targets exactly like the firmware does (issues #29, #40).
+
+    Mirrors PwmChannel::addTarget (src/AquaControl.cpp) as of the #29/#40 fix:
+
+    - clamp time to [0, 86400] and value to [0, 100]
+    - TWO targets with the same time collapse to one, keeping the LAST value -
+      addTarget() replaces an existing entry's Value in place
+    - sorted strictly ascending by the RAW time, which is the same key
+      proceedCycle() searches with, so an end-of-day 86400 target sorts LAST
+    - refuse (rather than silently truncate) more than MAX_TARGETS; the caller
+      turns that into a 400, mirroring the firmware
+    """
     cleaned = []
     for t in targets or []:
         seconds = int(t.get("time", 0) or 0)
@@ -134,8 +206,46 @@ def normalize_targets(targets, keep_is_control=True):
         if keep_is_control:
             item["isControl"] = bool(t.get("isControl", True))
         cleaned.append(item)
-    cleaned.sort(key=lambda t: t["time"])
-    return cleaned[:MAX_TARGETS]
+    return cleaned
+
+
+def dedupe_and_sort(targets, keep_is_control=True):
+    """Apply the addTarget() insert semantics: unique times, ascending, last wins.
+
+    Returns (ordered, overflow_count).
+
+    overflow_count counts targets a full channel would REFUSE, and deliberately
+    mirrors addTarget()'s check order (issue #40): a replace of an already-stored
+    time consumes no slot, so it is allowed even when the channel is full, while
+    a genuinely new time beyond the cap is refused. Counting distinct times
+    instead of raw entries is what makes that distinction come out right - a
+    payload that re-sends an existing time is not an overflow.
+    """
+    by_time = {}
+    for t in targets or []:
+        # Later entries overwrite earlier ones at the same second (addTarget
+        # replaces rather than appends), so plain dict assignment is the mirror.
+        by_time[int(t["time"])] = t
+    ordered = [by_time[k] for k in sorted(by_time)]
+    overflow = max(0, len(ordered) - MAX_TARGETS)
+    return ordered[:MAX_TARGETS], overflow
+
+
+def add_one_target(existing, new_target):
+    """Single-target insert mirroring PwmChannel::addTarget's order of checks.
+
+    Returns (ordered, ok). ok is False when the channel is full AND new_target's
+    time is not already stored - i.e. when the firmware returns ADD_TARGET_FULL.
+    Replacing a stored time succeeds regardless of the cap, because a replace
+    writes no new slot (see the note in addTarget).
+    """
+    by_time = {int(t["time"]): t for t in existing or []}
+    key = int(new_target["time"])
+    is_replace = key in by_time
+    if not is_replace and len(by_time) >= MAX_TARGETS:
+        return sorted(by_time.values(), key=lambda t: int(t["time"])), False
+    by_time[key] = new_target
+    return [by_time[k] for k in sorted(by_time)], True
 
 
 def as_control_points(targets):
@@ -320,7 +430,8 @@ def macro_duration_from_targets(channels) -> int:
 
 def json_body() -> dict:
     """Firmware tolerates an empty/missing body; never 500 on a bad request."""
-    return request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else {}
 
 
 # Serve static files
@@ -373,13 +484,52 @@ def get_all_schedules():
 def save_schedule():
     """Save schedule for a specific channel"""
     data = json_body()
-    channel = data.get("channel")
-    targets = data.get("targets", [])
+    channel = _parse_int_strict(data.get("channel"))
 
     if channel is None or channel < 0 or channel >= CHANNELS:
         return jsonify({"error": "Invalid channel"}), 400
 
-    cleaned = normalize_targets(targets)
+    # Issue #40 hardening: a missing key or a non-array value is NOT an explicit
+    # empty schedule. Only `"targets": []` clears a channel.
+    if "targets" not in data:
+        return jsonify({"error": "Missing targets array - schedule unchanged"}), 400
+    targets = data["targets"]
+    if not isinstance(targets, list):
+        return jsonify({"error": "targets must be an array - schedule unchanged"}), 400
+
+    # Issue #40: parse into a scratch list and commit only once EVERY object is
+    # known good, mirroring the firmware. Rejecting the whole save (rather than
+    # committing the parseable subset) is what stops a damaged body from silently
+    # replacing a working schedule with a partial day.
+    usable = []
+    for index, target in enumerate(targets):
+        parsed_target = parse_schedule_target(target)
+        if parsed_target is None:
+            print(
+                f"✗ Save rejected for channel {channel}: target {index} is not usable"
+            )
+            return jsonify(
+                {"error": "Could not parse every target - schedule unchanged"}
+            ), 400
+        parsed_target["isControl"] = bool(target.get("isControl", True))
+        usable.append(parsed_target)
+
+    cleaned, overflow = dedupe_and_sort(usable)
+
+    # Issue #40: refuse to silently truncate the day.
+    if overflow > 0:
+        print(
+            f"✗ Save rejected for channel {channel}: {overflow} target(s) over {MAX_TARGETS}"
+        )
+        return (
+            jsonify(
+                {
+                    "error": f"Too many targets - max {MAX_TARGETS} per channel",
+                    "max_targets": MAX_TARGETS,
+                }
+            ),
+            400,
+        )
 
     schedules[channel] = cleaned
     save_schedules_to_disk()
@@ -427,12 +577,29 @@ def add_target():
     time_value = max(0, min(86400, time_value))
     value = max(0, min(100, int(value)))
 
-    # Add or update target at this time
-    current_targets = schedules.get(channel, [])
-    # Remove existing target at same time
-    current_targets = [t for t in current_targets if t["time"] != time_value]
-    current_targets.append({"time": time_value, "value": value, "isControl": True})
-    current_targets = normalize_targets(current_targets)
+    # Add or update target at this time. Issue #29: no manual "remove the target at
+    # this time" pass - addTarget() replaces an existing entry's value in place,
+    # which is the same thing, and the firmware now relies on exactly that.
+    #
+    # Issue #40: a genuinely new time on a full channel is an error, not a silent
+    # drop. Re-using a stored time still works when full (no new slot needed).
+    new_target = {"time": time_value, "value": value, "isControl": True}
+    current_targets, ok = add_one_target(
+        normalize_targets(schedules.get(channel, [])), new_target
+    )
+    if not ok:
+        print(
+            f"✗ Target add rejected: channel {channel} already holds {MAX_TARGETS} targets"
+        )
+        return (
+            jsonify(
+                {
+                    "error": f"Channel already holds {MAX_TARGETS} targets",
+                    "max_targets": MAX_TARGETS,
+                }
+            ),
+            400,
+        )
     schedules[channel] = current_targets
     save_schedules_to_disk()
     write_channel_cfg(channel, current_targets)
@@ -458,8 +625,11 @@ def delete_target():
     else:
         time_value = int(time_value)
 
-    current_targets = [t for t in schedules.get(channel, []) if t["time"] != time_value]
-    current_targets = normalize_targets(current_targets)
+    current_targets, _ = dedupe_and_sort(
+        normalize_targets(
+            [t for t in schedules.get(channel, []) if t["time"] != time_value]
+        )
+    )
     schedules[channel] = current_targets
     save_schedules_to_disk()
     write_channel_cfg(channel, current_targets)
@@ -573,7 +743,10 @@ def macro_save():
     for entry in raw_channels:
         ch = int(entry.get("channel", 0))
         if 0 <= ch < CHANNELS:
-            channels[ch] = normalize_targets(entry.get("targets", []))
+            # Issue #29: macros get the same unique-times/ascending treatment.
+            channels[ch], _ = dedupe_and_sort(
+                normalize_targets(entry.get("targets", []))
+            )
 
     duration = int(data.get("duration", 0) or 0)
     if duration == 0:
@@ -735,7 +908,10 @@ def debug():
             resolved = sorted(targets, key=lambda t: t["time"])
             points = [(t["time"], t["value"]) for t in resolved]
             # find bracketing pair
-            lo, hi = points[0], points[-1] if len(points) > 1 else (points[0][0] + 86400, points[0][1])
+            lo, hi = (
+                points[0],
+                points[-1] if len(points) > 1 else (points[0][0] + 86400, points[0][1]),
+            )
             for i in range(len(points) - 1):
                 t0, v0 = points[i]
                 t1, v1 = points[i + 1]

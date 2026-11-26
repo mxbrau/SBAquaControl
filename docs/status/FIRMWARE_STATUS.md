@@ -112,10 +112,11 @@ Covered by automation (`uv run pytest test/` — mock contract, route parity, ho
 - [x] Mock mirrors all firmware routes
 - [x] All API endpoints match the firmware contract
 - [x] Scheduling maths pass on the host (interpolation, slew limiter, time parsing)
+- [x] Schedule save rejects missing/malformed target lists and leaves the stored schedule intact (mock contract + firmware source guards)
 
 Needs real hardware (see [TESTING_GUIDE.md](TESTING_GUIDE.md)):
 - [ ] Test mode operations (manual channel control, LED output)
-- [ ] Save/load configurations via web UI
+- [x] Save/load configurations via web UI — **hardware-verified 2026-11-26** on SBAQC (`8d656d5`, fw 0.5.001): saving the UI's day/night payload with the `86400` sentinel stores strictly ascending/unique targets, `/api/reboot` preserves them, the `86400` target round-trips as `24:00`, and malformed saves return 400 without changing the schedule
 - [ ] Temperature sensor integration (if enabled)
 - [ ] OTA update process
 - [ ] 24-hour operation without memory leaks

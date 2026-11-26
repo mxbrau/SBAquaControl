@@ -206,24 +206,45 @@ public:
 	// Allow the debug endpoint to report live PWM state without guessing.
 	friend void handleApiDebug();
 	uint8_t ChannelAddress; // Contains the address or pin for setting the pwm value
+	// INVARIANT (issues #29 + #40): Targets[0..TargetCount) is kept strictly
+	// ascending by the RAW Time field, with no two entries sharing a Time, and
+	// every Time within [0, 86400]. 86400 is legal and means "end of day": it is
+	// a distinct instant from Time 0, so it sorts last and is never confused with
+	// the midnight wrap that proceedCycle() performs after the last target.
+	// addTarget() is the only supported way to mutate this array - it maintains
+	// the invariant; direct writes to TargetCount/Targets[] bypass it.
 	Target Targets[MAX_TARGET_COUNT_PER_CHANNEL];
-	uint8_t TargetCount;
-	uint16_t CurrentWriteValue;
-	bool HasToWritePwm; // Indecates, that a new pwm values has to be written to the pwm device
-	bool TestMode;
-	time_t TestModeSetTime;
-	uint8_t TestValue;
-	time_t CurrentSecOfDay;
-	time_t CurrentMilli;
+	// Initialised in-class (issues #29/#40): callers legitimately build a
+	// PwmChannel as a scratch buffer and parse into it before committing, so an
+	// uninitialised TargetCount would be read as garbage. addTarget() relies on
+	// it starting at 0 to decide where to insert.
+	uint8_t TargetCount = 0;
+	uint16_t CurrentWriteValue = 0;
+	bool HasToWritePwm = false; // Indecates, that a new pwm values has to be written to the pwm device
+	bool TestMode = false;
+	time_t TestModeSetTime = 0;
+	uint8_t TestValue = 0;
+	time_t CurrentSecOfDay = 0;
+	time_t CurrentMilli = 0;
 
 	PwmChannel()
 	{
-		TestMode = false;
+		// Intentionally empty: every member has an in-class initialiser above,
+		// including the ones that used to be left to chance (TargetCount,
+		// CurrentWriteValue, HasToWritePwm, TestValue, CurrentSecOfDay/Milli).
 	}
 
-	uint8_t addTarget(Target t); // Inserts a new target (time and value for the channel) and gives back the position.
+	// Return value of addTarget() when the channel is full and nothing was stored.
+	static const uint8_t ADD_TARGET_FULL = 0xFF;
 
-	bool removeTargetAt(uint8_t pos); // Removes the target at the specified position
+	// Inserts t keeping Targets[] strictly ascending by Time. A target whose
+	// Time already exists replaces that entry's Value (last edit wins).
+	// Returns the index it occupies, or ADD_TARGET_FULL if the channel is full.
+	uint8_t addTarget(Target t);
+
+	// Removes the target at pos, preserving the ascending-Time invariant.
+	// Returns false (and changes nothing) if pos is out of range.
+	bool removeTargetAt(uint8_t pos);
 
 	void proceedCycle(time_t currentSecOfDay, time_t currentMilliOfSec); // the main function for each step. Here the pwm value will be calculated
 };

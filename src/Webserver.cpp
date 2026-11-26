@@ -186,6 +186,85 @@ long parseTimeToSeconds(String timeStr)
 	}
 }
 
+// Strict decimal parse for the schedule-save body. String::toInt() returns 0
+// for garbage, so {"time":"later","value":50} used to become a legitimate
+// target at second 0 and be saved with a 200 (issues #29/#40). Returns false if
+// any character is not part of the number.
+static bool parseStrictLong(const String &value, long &result)
+{
+	String trimmed = value;
+	trimmed.trim();
+	if (trimmed.length() == 0)
+	{
+		return false;
+	}
+
+	unsigned int i = 0;
+	bool negative = false;
+	if (trimmed.charAt(0) == '+' || trimmed.charAt(0) == '-')
+	{
+		negative = (trimmed.charAt(0) == '-');
+		i = 1;
+	}
+	if (i >= trimmed.length())
+	{
+		return false;
+	}
+
+	long parsed = 0;
+	for (; i < trimmed.length(); i++)
+	{
+		char c = trimmed.charAt(i);
+		if (c < '0' || c > '9')
+		{
+			return false;
+		}
+		// Times and values are small; reject absurd input instead of overflowing.
+		if (parsed > 1000000L)
+		{
+			return false;
+		}
+		parsed = (parsed * 10) + (c - '0');
+	}
+	result = negative ? -parsed : parsed;
+	return true;
+}
+
+// Strict variant of parseTimeToSeconds() for the schedule-save handler. Accepts
+// the same shapes (decimal seconds, HH:MM, MM:SS) but rejects unparseable input
+// instead of coercing it to 0. Keeps parseTimeToSeconds()'s HH:MM/MM:SS
+// heuristic so valid payloads keep their existing wire meaning.
+static bool parseStrictTargetTime(const String &value, long &result)
+{
+	String trimmed = value;
+	trimmed.trim();
+	if (trimmed.length() == 0)
+	{
+		return false;
+	}
+
+	int colon = trimmed.indexOf(':');
+	if (colon == -1)
+	{
+		return parseStrictLong(trimmed, result);
+	}
+
+	long first = 0;
+	long second = 0;
+	if (!parseStrictLong(trimmed.substring(0, colon), first) ||
+		!parseStrictLong(trimmed.substring(colon + 1), second))
+	{
+		return false;
+	}
+	if (first < 0 || first > 100000L || second < 0 || second >= 60)
+	{
+		return false;
+	}
+
+	result = (first >= 24) ? (first * 60 + second) : (first * 3600 + second * 60);
+	return true;
+}
+
 // API: GET /api/status
 void handleApiStatus()
 {
@@ -349,17 +428,20 @@ void handleApiScheduleSave()
 	Serial.print(F("Schedule save body: "));
 	Serial.println(body);
 
-	// If body is empty, try minimal fallback parameters
-	if (body.length() == 0 && _Server.hasArg("channel"))
+	// If body is empty, try minimal fallback parameters. Both are required:
+	// an empty POST with only ?channel=N used to synthesise "targets":[] and
+	// therefore CLEAR the channel. A save without a target list is ambiguous, not
+	// an explicit clear (issue #40).
+	if (body.length() == 0 && _Server.hasArg("channel") && _Server.hasArg("targets"))
 	{
 		// Build a tiny synthetic JSON for the minimal parser path
 		String ch = _Server.arg("channel");
-		String targets = _Server.arg("targets"); // optional, expected like [{"time":3600,"value":50},...]
-		body.reserve(128);						 // Pre-allocate to avoid fragmentation
+		String targets = _Server.arg("targets");
+		body.reserve(128); // Pre-allocate to avoid fragmentation
 		body = "{\"channel\":";
 		body += ch;
 		body += ",\"targets\":";
-		body += (targets.length() ? targets : "[]");
+		body += targets;
 		body += "}";
 	}
 
@@ -384,75 +466,206 @@ void handleApiScheduleSave()
 		return;
 	}
 
-	// Clear existing targets
-	for (uint8_t t = 0; t < MAX_TARGET_COUNT_PER_CHANNEL; t++)
+	// Issue #40: parse the whole body into a scratch channel FIRST and only
+	// commit once parsing is known to have succeeded. This handler used to clear
+	// the live channel up front and then re-add whatever the ad-hoc parser
+	// recovered, so any shortfall - a truncated body, a missing "targets":[ marker,
+	// a parse that yielded nothing - left the channel at TargetCount == 0. That is
+	// an explicit "lights off" state (PwmChannel::proceedCycle forces
+	// _PwmTarget/_PwmValue/CurrentWriteValue to 0 when TargetCount == 0), so a
+	// failed parse silently blacked out a channel that had a working schedule -
+	// while still answering 200 {"status":"ok"}. Build then swap.
+	PwmChannel parsed;
+
+	// Locate the targets array. A missing key, a non-array value and an
+	// unterminated array are all rejected: none of them is the same as an
+	// explicit "targets":[] clear. Treating "I could not read the body" as "the
+	// user asked for an empty schedule" is exactly how a shortfall used to black
+	// out a working channel while answering 200 (issue #40).
+	int targetsKeyIdx = body.indexOf("\"targets\"");
+	if (targetsKeyIdx == -1)
 	{
-		_aqc->_PwmChannels[channel].removeTargetAt(0);
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Missing targets array - schedule unchanged\"}");
+		return;
 	}
 
-	// Parse targets array
-	int targetsIdx = body.indexOf("\"targets\":[");
-	if (targetsIdx != -1)
+	int targetsColon = body.indexOf(':', targetsKeyIdx + 9);
+	int arrayStart = (targetsColon == -1) ? -1 : targetsColon + 1;
+	while (arrayStart >= 0 && arrayStart < (int)body.length())
 	{
-		int arrayStart = targetsIdx + 11;
-		int arrayEnd = body.indexOf(']', arrayStart);
-		String targetsStr = body.substring(arrayStart, arrayEnd);
+		char c = body.charAt(arrayStart);
+		if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+			break;
+		arrayStart++;
+	}
+	if (arrayStart < 0 || arrayStart >= (int)body.length() || body.charAt(arrayStart) != '[')
+	{
+		_Server.send(400, "application/json",
+					 "{\"error\":\"targets must be an array - schedule unchanged\"}");
+		return;
+	}
+	arrayStart++;
 
-		// Simple parser: split by },{
-		unsigned int pos = 0;
-		while (pos < targetsStr.length())
+	int arrayEnd = body.indexOf(']', arrayStart);
+	if (arrayEnd == -1)
+	{
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Unterminated targets array - schedule unchanged\"}");
+		return;
+	}
+	String targetsStr = body.substring(arrayStart, arrayEnd);
+
+	unsigned int objectsSeen = 0; // '{' objects found inside the array
+	unsigned int objectsUsed = 0; // objects that yielded a stored target
+	unsigned int overflowed = 0;  // targets refused because the channel is full
+
+	// Simple parser: one {...} object per target.
+	unsigned int pos = 0;
+	while (pos < (unsigned int)targetsStr.length())
+	{
+		int objStart = targetsStr.indexOf('{', pos);
+		if (objStart == -1)
+			break;
+		int objEnd = targetsStr.indexOf('}', objStart);
+		if (objEnd == -1)
 		{
-			int objStart = targetsStr.indexOf('{', pos);
-			if (objStart == -1)
-				break;
-			int objEnd = targetsStr.indexOf('}', objStart);
-			if (objEnd == -1)
-				break;
+			// An opening brace with no closing one means the body stopped
+			// mid-target. Reject rather than committing a partial schedule.
+			_Server.send(400, "application/json",
+						 "{\"error\":\"Malformed target object - schedule unchanged\"}");
+			return;
+		}
+		objectsSeen++;
 
-			String obj = targetsStr.substring(objStart + 1, objEnd);
+		String obj = targetsStr.substring(objStart + 1, objEnd);
 
-			// Parse time
-			int timeIdx = obj.indexOf("\"time\":");
-			if (timeIdx != -1)
+		int timeIdx = obj.indexOf("\"time\":");
+		int valueIdx = obj.indexOf("\"value\":");
+		long targetTime = 0;
+		long value = 0;
+		bool usable = (timeIdx != -1) && (valueIdx != -1);
+
+		// Parse time. Both a JSON number and an "HH:MM"/"MM:SS" string are
+		// accepted, but neither String::toInt()'s "garbage becomes 0" fallback
+		// nor a missing key may turn an unreadable target into a real one.
+		if (usable)
+		{
+			int timeStart = timeIdx + 7;
+			int timeEnd = obj.indexOf(',', timeStart);
+			if (timeEnd == -1)
+				timeEnd = obj.length();
+			String timeStr = obj.substring(timeStart, timeEnd);
+			timeStr.trim();
+			if (timeStr.startsWith("\""))
+				timeStr = timeStr.substring(1, timeStr.length() - 1);
+			usable = parseStrictTargetTime(timeStr, targetTime);
+		}
+
+		// Parse value
+		if (usable)
+		{
+			int valueStart = valueIdx + 8;
+			int valueEnd = obj.indexOf(',', valueStart);
+			if (valueEnd == -1)
+				valueEnd = obj.length();
+			String valueStr = obj.substring(valueStart, valueEnd);
+			valueStr.trim();
+			if (valueStr.startsWith("\""))
+				valueStr = valueStr.substring(1, valueStr.length() - 1);
+			usable = parseStrictLong(valueStr, value);
+		}
+
+		if (usable)
+		{
+			// 86400 stays reachable on purpose: the web UI's end-of-day sentinel
+			// is a legitimate Time (issue #40), and addTarget() orders by the raw
+			// Time so it sorts last and behaves as "hold until midnight".
+			targetTime = max(0L, min(86400L, targetTime));
+			value = max(0L, min(100L, value));
+
+			Target t;
+			t.Time = targetTime;
+			t.Value = (uint8_t)value;
+			// Issue #40: a full channel used to drop the surplus silently,
+			// truncating the day to whatever happened to be earliest.
+			if (parsed.addTarget(t) == PwmChannel::ADD_TARGET_FULL)
 			{
-				int timeStart = timeIdx + 7;
-				int timeEnd = obj.indexOf(',', timeStart);
-				if (timeEnd == -1)
-					timeEnd = obj.length();
-				String timeStr = obj.substring(timeStart, timeEnd);
-				timeStr.trim();
-				if (timeStr.startsWith("\""))
-					timeStr = timeStr.substring(1, timeStr.length() - 1);
-				long targetTime = parseTimeToSeconds(timeStr);
-				targetTime = max(0L, min(86400L, targetTime));
-
-				// Parse value
-				int valueIdx = obj.indexOf("\"value\":");
-				if (valueIdx != -1)
-				{
-					int valueStart = valueIdx + 8;
-					int valueEnd = obj.indexOf(',', valueStart);
-					if (valueEnd == -1)
-						valueEnd = obj.length();
-					String valueStr = obj.substring(valueStart, valueEnd);
-					valueStr.trim();
-					int value = valueStr.toInt();
-					value = max(0, min(100, value));
-					uint8_t finalValue = (uint8_t)value;
-
-					Target t;
-					t.Time = targetTime;
-					t.Value = finalValue;
-					_aqc->_PwmChannels[channel].addTarget(t);
-				}
+				overflowed++;
 			}
+			else
+			{
+				objectsUsed++;
+			}
+		}
 
-			pos = objEnd + 1;
+		pos = objEnd + 1;
+	}
+
+	// A non-empty array that contained no {...} objects at all is malformed
+	// (["x"], [[]], ...). Only whitespace/commas count as an explicit empty list.
+	bool arrayHasContent = false;
+	for (unsigned int i = 0; i < (unsigned int)targetsStr.length(); i++)
+	{
+		char c = targetsStr.charAt(i);
+		if (c != ' ' && c != '\t' && c != '\r' && c != '\n' && c != ',')
+		{
+			arrayHasContent = true;
+			break;
 		}
 	}
+	if (objectsSeen == 0 && arrayHasContent)
+	{
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Malformed targets array - schedule unchanged\"}");
+		return;
+	}
 
-	// Persist to SD card
-	_aqc->writeLedConfig(channel);
+	// More targets than a channel can hold. Reject rather than persist a silently
+	// shortened day; the web UI caps at the same limit (app.js MAX_TARGETS).
+	if (overflowed > 0)
+	{
+		Serial.printf("Schedule save for channel %u rejected: %u target(s) over the %u limit\n",
+					  (unsigned)channel, (unsigned)overflowed,
+					  (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		char err[96];
+		sprintf(err, "{\"error\":\"Too many targets - max %u per channel\",\"max_targets\":%u}",
+				(unsigned)MAX_TARGET_COUNT_PER_CHANNEL, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		_Server.send(400, "application/json", err);
+		return;
+	}
+
+	// At least one object present but at least one of them unusable. Reject the
+	// whole save: committing the parseable subset would silently drop the rest.
+	if (objectsSeen > 0 && objectsUsed != objectsSeen)
+	{
+		Serial.printf("Schedule save for channel %u rejected: %u object(s), %u usable\n",
+					  (unsigned)channel, (unsigned)objectsSeen, (unsigned)objectsUsed);
+		_Server.send(400, "application/json",
+					 "{\"error\":\"Could not parse every target - schedule unchanged\"}");
+		return;
+	}
+
+	// Commit: copy the schedule across without disturbing the live channel's
+	// PWM/test-mode state (a schedule save must not silently exit test mode).
+	_aqc->_PwmChannels[channel].TargetCount = parsed.TargetCount;
+	for (uint8_t i = 0; i < parsed.TargetCount; i++)
+	{
+		_aqc->_PwmChannels[channel].Targets[i] = parsed.Targets[i];
+	}
+	_aqc->_PwmChannels[channel].HasToWritePwm = true;
+
+	// Persist to SD card. Issue #40: the result was discarded, so a failed write
+	// (SD full, card removed, file locked) still reported success and the change
+	// was lost on the next boot.
+	if (!_aqc->writeLedConfig(channel))
+	{
+		Serial.printf("Schedule save for channel %u FAILED to persist to SD\n",
+					  (unsigned)channel);
+		_Server.send(500, "application/json",
+					 "{\"error\":\"Saved in RAM but could not write the SD config\"}");
+		return;
+	}
 	_aqc->_IsFirstCycle = true;
 
 	char buf[64];
@@ -593,24 +806,35 @@ void handleApiTargetAdd()
 		return;
 	}
 
-	// Remove existing target at same time if present
-	for (uint8_t i = 0; i < _aqc->_PwmChannels[channel].TargetCount; i++)
-	{
-		if (_aqc->_PwmChannels[channel].Targets[i].Time == targetTime)
-		{
-			_aqc->_PwmChannels[channel].removeTargetAt(i);
-			break;
-		}
-	}
-
-	// Add new target
+	// Issue #29: no manual "remove the target at this time" pass any more.
+	// addTarget() replaces the value of an existing entry with the same Time and
+	// keeps the array ascending-unique, which is exactly what that loop was
+	// trying to achieve by hand - and it is the only thing that keeps duplicates
+	// and an unsorted tail from reappearing in the saved file.
+	//
+	// Issue #40: check the result. A full channel silently dropped the target
+	// before, and the caller was told it had been added.
 	Target t;
 	t.Time = targetTime;
 	t.Value = finalValue;
-	_aqc->_PwmChannels[channel].addTarget(t);
+	if (_aqc->_PwmChannels[channel].addTarget(t) == PwmChannel::ADD_TARGET_FULL)
+	{
+		Serial.printf("Target add rejected: channel %u already holds %u targets\n",
+					  (unsigned)channel, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		char err[96];
+		sprintf(err, "{\"error\":\"Channel already holds %u targets\",\"max_targets\":%u}",
+				(unsigned)MAX_TARGET_COUNT_PER_CHANNEL, (unsigned)MAX_TARGET_COUNT_PER_CHANNEL);
+		_Server.send(400, "application/json", err);
+		return;
+	}
 
-	// Persist to SD
-	_aqc->writeLedConfig(channel);
+	// Persist to SD - issue #40: do not report success if the write failed.
+	if (!_aqc->writeLedConfig(channel))
+	{
+		_Server.send(500, "application/json",
+					 "{\"error\":\"Added in RAM but could not write the SD config\"}");
+		return;
+	}
 	_aqc->_IsFirstCycle = true;
 
 	Serial.print(F("Added target: ch="));
